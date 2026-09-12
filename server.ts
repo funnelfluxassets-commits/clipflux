@@ -374,10 +374,20 @@ app.get('/api/info', async (req, res) => {
       },
       {
         id: 'cf_720p_hd',
-        label: '720p Fast HD',
+        label: '720p HD (Fast Download)',
         quality: '720',
-        description: 'Standard HD MP4, optimized for fast mobile downloads',
+        description: 'Standard HD MP4 with audio — fast to save and share',
         badge: '720p HD',
+        type: 'video',
+        url: targetUrl,
+        extension: 'mp4',
+      },
+      {
+        id: 'cf_360p_sd',
+        label: '360p Standard MP4 (Instant)',
+        quality: '360',
+        description: 'Compact file size with audio for instant saving',
+        badge: 'FAST MP4',
         type: 'video',
         url: targetUrl,
         extension: 'mp4',
@@ -967,7 +977,7 @@ app.get('/api/download', async (req, res) => {
 
       if (videoId) {
         try {
-          const qNum = format.includes('720') ? '720' : '1080';
+          const qNum = format.includes('360') ? '360' : format.includes('720') ? '720' : '1080';
           const tubeUrl = `https://youtube-video-downloader.funnelfluxassets.com/api/proxy-download?id=${videoId}&quality=${qNum}&type=video&filename=${encodeURIComponent(safeFilename)}&ext=mp4`;
           const tubeRes = await fetch(tubeUrl);
           if (tubeRes.ok && tubeRes.body) {
@@ -986,12 +996,14 @@ app.get('/api/download', async (req, res) => {
         ytUrl = `https://www.youtube.com/watch?v=${videoId}`;
       }
 
-      const qNum = format.includes('720') ? 720 : 1080;
+      const qNum = format.includes('360') ? 360 : format.includes('720') ? 720 : 1080;
       extraArgs = [
-        '-f', `bestvideo[height<=${qNum}]+bestaudio/best[height<=${qNum}]/best`,
-        '--extractor-args', 'youtube:player_client=web_embedded,web_creator;formats=missing_pot',
+        '-S', `res:${qNum},vcodec:h264,ext:mp4:m4a`,
+        '-f', 'bestvideo+bestaudio/best',
+        '--extractor-args', 'youtube:player_client=web_safari;formats=missing_pot',
         '--merge-output-format', 'mp4',
         '--postprocessor-args', 'ffmpeg:-c:a aac -b:a 192k -movflags +faststart',
+        '--js-runtimes', 'node',
         ...ensureYouTubeCookiesFile(),
       ];
     } else {

@@ -79,6 +79,7 @@ export const App: React.FC = () => {
   const [isFetchingInfo, setIsFetchingInfo] = useState(false);
   const [mediaResult, setMediaResult] = useState<MediaResult | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [downloadProgress, setDownloadProgress] = useState<string | null>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
   // Auto-detect platform from URL
@@ -88,6 +89,7 @@ export const App: React.FC = () => {
       setDetectedPlatform('unknown');
       return;
     }
+
     if (trimmed.includes('youtube.com') || trimmed.includes('youtu.be')) {
       setDetectedPlatform('youtube');
     } else if (trimmed.includes('tiktok.com')) {
@@ -96,26 +98,31 @@ export const App: React.FC = () => {
       setDetectedPlatform('instagram');
     } else if (trimmed.includes('twitter.com') || trimmed.includes('x.com')) {
       setDetectedPlatform('twitter');
-    } else if (trimmed.includes('pinterest.com') || trimmed.includes('pin.it')) {
-      setDetectedPlatform('pinterest');
     } else if (trimmed.includes('facebook.com') || trimmed.includes('fb.watch')) {
       setDetectedPlatform('facebook');
-    } else if (trimmed.includes('reddit.com') || trimmed.includes('v.redd.it')) {
-      setDetectedPlatform('reddit');
+    } else if (trimmed.includes('pinterest.com') || trimmed.includes('pin.it')) {
+      setDetectedPlatform('pinterest');
+    } else if (trimmed.includes('snapchat.com')) {
+      setDetectedPlatform('snapchat');
     } else {
       setDetectedPlatform('unknown');
     }
   }, [url]);
 
-  const handleFetchMedia = async (overrideUrl?: string) => {
-    const target = (overrideUrl || url).trim();
-    if (!target) return;
+  const handleFetchMedia = async (targetUrl: string) => {
+    if (!targetUrl.trim()) return;
 
     setIsFetchingInfo(true);
     setFetchError(null);
+    setMediaResult(null);
 
     try {
-      const res = await fetch(`/api/info?url=${encodeURIComponent(target)}`);
+      const res = await fetch('/api/extract', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: targetUrl.trim() }),
+      });
+
       const data = await res.json();
 
       if (!res.ok || !data.success) {
@@ -133,6 +140,7 @@ export const App: React.FC = () => {
 
   const handleDownload = async (option: DownloadOption, customFilename: string) => {
     setDownloadingId(option.id);
+    setDownloadProgress('Connecting...');
     setFetchError(null);
     try {
       const filename = `${customFilename}.${option.extension}`;
@@ -140,7 +148,7 @@ export const App: React.FC = () => {
       // Only direct client fetch IF it's a thumbnail/video OR if it's already a native MP3 url (like TikTok sound)
       const isNativeMp3 = option.type === 'audio' && option.directUrl?.toLowerCase().includes('.mp3');
 
-      if (option.directUrl && (option.type !== 'audio' || isNativeMp3)) {
+      if (option.directUrl && (option.type === 'thumbnail' || isNativeMp3)) {
         try {
           const response = await fetch(option.directUrl);
           if (response.ok) {
@@ -152,8 +160,9 @@ export const App: React.FC = () => {
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
-            window.URL.revokeObjectURL(blobUrl);
+            setTimeout(() => window.URL.revokeObjectURL(blobUrl), 3000);
             setDownloadingId(null);
+            setDownloadProgress(null);
             return;
           }
         } catch {
@@ -172,7 +181,35 @@ export const App: React.FC = () => {
         throw new Error(msg);
       }
 
-      const blob = await response.blob();
+      const contentLengthHeader = response.headers.get('content-length');
+      const totalBytes = contentLengthHeader ? parseInt(contentLengthHeader, 10) : 0;
+      let loadedBytes = 0;
+
+      const reader = response.body?.getReader();
+      const chunks: Uint8Array[] = [];
+
+      if (reader) {
+        setDownloadProgress(totalBytes > 0 ? '0%' : 'Streaming...');
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (value) {
+            chunks.push(value);
+            loadedBytes += value.length;
+            if (totalBytes > 0) {
+              const percent = Math.min(99, Math.round((loadedBytes / totalBytes) * 100));
+              setDownloadProgress(`${percent}%`);
+            } else {
+              const mb = (loadedBytes / (1024 * 1024)).toFixed(1);
+              setDownloadProgress(`${mb} MB`);
+            }
+          }
+        }
+      }
+
+      setDownloadProgress('Saving...');
+      const contentType = response.headers.get('content-type') || (option.type === 'audio' ? 'audio/mpeg' : 'video/mp4');
+      const blob = new Blob(chunks, { type: contentType });
       const blobUrl = window.URL.createObjectURL(blob);
       const tempLink = document.createElement('a');
       tempLink.href = blobUrl;
@@ -187,6 +224,7 @@ export const App: React.FC = () => {
       throw e;
     } finally {
       setDownloadingId(null);
+      setDownloadProgress(null);
     }
   };
 
@@ -335,6 +373,7 @@ export const App: React.FC = () => {
                 media={mediaResult}
                 onDownload={handleDownload}
                 downloadingId={downloadingId}
+                downloadProgress={downloadProgress}
               />
             )}
           </div>

@@ -23,12 +23,14 @@ interface ResultCardProps {
   media: MediaResult;
   onDownload: (option: DownloadOption, customFilename: string) => Promise<void> | void;
   downloadingId: string | null;
+  downloadProgress?: string | null;
 }
 
 export const ResultCard: React.FC<ResultCardProps> = ({
   media,
   onDownload,
   downloadingId,
+  downloadProgress,
 }) => {
   const [copiedCaption, setCopiedCaption] = useState(false);
   const [downloadSuccessId, setDownloadSuccessId] = useState<string | null>(null);
@@ -253,7 +255,7 @@ export const ResultCard: React.FC<ResultCardProps> = ({
                       } catch {}
                     }}
                     disabled={isDownloading}
-                    className={`min-w-[84px] sm:min-w-[92px] h-9 sm:h-10 px-3.5 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center justify-center gap-1.5 cursor-pointer disabled:cursor-wait ${
+                    className={`min-w-[96px] sm:min-w-[104px] h-9 sm:h-10 px-3 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center justify-center gap-1.5 cursor-pointer disabled:cursor-wait ${
                       isDownloading || isSuccess
                         ? 'bg-emerald-500 text-white shadow-sm shadow-emerald-500/25 active:scale-95'
                         : 'bg-white dark:bg-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 active:scale-95 hover:border-zinc-300 dark:hover:border-zinc-600'
@@ -262,7 +264,7 @@ export const ResultCard: React.FC<ResultCardProps> = ({
                     {isDownloading ? (
                       <>
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        <span>Saving...</span>
+                        <span>{downloadProgress || 'Saving...'}</span>
                       </>
                     ) : isSuccess ? (
                       <>
