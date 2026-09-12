@@ -80,7 +80,11 @@ export const ResultCard: React.FC<ResultCardProps> = ({
     }
   };
 
-  const isVertical = media.aspect_ratio === '9:16' || media.originalUrl.includes('/reel') || media.originalUrl.includes('/shorts');
+  const isVertical =
+    media.aspect_ratio === '9:16' ||
+    media.originalUrl.includes('/reel') ||
+    media.originalUrl.includes('/shorts') ||
+    ((media.height || 0) > (media.width || 0) && (media.height || 0) > 0);
 
   return (
     <div className="w-full max-w-4xl mx-auto mt-6 bg-white dark:bg-zinc-900/95 rounded-3xl p-4 sm:p-7 shadow-2xl border border-zinc-200 dark:border-zinc-800 transition-all space-y-6 animate-in fade-in slide-in-from-top-3">
@@ -91,7 +95,7 @@ export const ResultCard: React.FC<ResultCardProps> = ({
           <div className="flex items-center gap-2 flex-wrap">
             <span className="inline-flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
               {isVertical ? <Smartphone className="w-3 h-3 text-emerald-500" /> : <Monitor className="w-3 h-3 text-emerald-500" />}
-              {media.platform.toUpperCase()} {isVertical ? 'REEL (9:16)' : 'VIDEO (16:9)'}
+              {media.platform === 'twitter' ? 'X / TWITTER' : media.platform.toUpperCase()} {isVertical ? 'REEL (9:16)' : 'VIDEO (16:9)'}
             </span>
 
             <span className="inline-flex items-center gap-1 text-[11px] font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
@@ -134,19 +138,42 @@ export const ResultCard: React.FC<ResultCardProps> = ({
           isVertical ? 'aspect-[9/16] max-h-[460px] max-w-[280px]' : 'aspect-video max-h-[300px]'
         }`}>
           {isPlayingVideo ? (
-            <iframe
-              src={
-                media.platform === 'instagram'
-                  ? `https://www.instagram.com/p/${media.id}/embed/`
-                  : media.platform === 'youtube'
-                  ? `https://www.youtube.com/embed/${media.id}?autoplay=1`
-                  : media.coverUrl
-              }
-              title={media.title}
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
-              className="w-full h-full border-0"
-            />
+            media.platform === 'instagram' ? (
+              <iframe
+                src={`https://www.instagram.com/p/${media.id}/embed/`}
+                title={media.title}
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+                className="w-full h-full border-0"
+              />
+            ) : media.platform === 'youtube' ? (
+              <iframe
+                src={`https://www.youtube.com/embed/${media.id}?autoplay=1`}
+                title={media.title}
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+                className="w-full h-full border-0"
+              />
+            ) : (
+              <video
+                src={
+                  media.videoUrl ||
+                  media.downloads.find((d) => d.type === 'video')?.directUrl ||
+                  media.downloads.find((d) => d.type === 'video')?.url
+                }
+                controls
+                autoPlay
+                playsInline
+                className="w-full h-full object-contain bg-black"
+                onError={(e) => {
+                  const target = e.currentTarget;
+                  const fallback = media.downloads.find((d) => d.directUrl)?.directUrl;
+                  if (fallback && target.src !== fallback) {
+                    target.src = fallback;
+                  }
+                }}
+              />
+            )
           ) : (
             <div className="relative w-full h-full group cursor-pointer" onClick={() => setIsPlayingVideo(true)}>
               <img

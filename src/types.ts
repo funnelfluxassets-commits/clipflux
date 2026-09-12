@@ -35,6 +35,7 @@ export interface MediaResult {
   authorUsername?: string;
   authorAvatar?: string;
   coverUrl: string;
+  videoUrl?: string;
   duration?: number;
   durationFormatted?: string;
   aspect_ratio: AspectRatioType;

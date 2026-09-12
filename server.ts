@@ -624,42 +624,146 @@ app.get('/api/info', async (req, res) => {
     });
   }
 
-  // ── Twitter / X Handler ─────────────────────────────────────────────────────
+  // ── Twitter / X Handler (Ported from TweetDownloader) ───────────────────────
   if (platform === 'twitter') {
-    const tweetMatch = targetUrl.match(/(?:twitter\.com|x\.com)\/(?:[a-zA-Z0-9_]+)\/status\/([0-9]+)/);
-    const tweetId = tweetMatch ? tweetMatch[1] : 'tweet';
+    const tweetRegex = /(?:twitter\.com|x\.com)\/(?:#!\/)?(?:\w+)\/status(?:es)?\/(\d+)/i;
+    const directStatusRegex = /(?:twitter\.com|x\.com)\/i\/status\/(\d+)/i;
+    const match = targetUrl.match(tweetRegex) || targetUrl.match(directStatusRegex);
+    const tweetId = match ? match[1] : 'tweet';
+    const cleanUrl = `https://x.com/i/status/${tweetId}`;
 
-    let title = 'X / Twitter Video';
-    let authorName = 'X Creator';
+    const ytdlpBin = await ensureYtDlp();
+    const args = [
+      '--dump-json',
+      '--no-playlist',
+      '--no-warnings',
+      '--add-header', 'User-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+      '--add-header', 'Referer:https://x.com/',
+      '--add-header', 'Accept-Language:en-US,en;q=0.9',
+      '--js-runtimes', 'node',
+      cleanUrl,
+    ];
+
+    let mediaInfo: any;
     try {
-      const oembedRes = await fetch(`https://publish.twitter.com/oembed?url=${encodeURIComponent(cleanUrlWithoutParams)}`);
-      if (oembedRes.ok) {
-        const data = await oembedRes.json();
-        if (data.author_name) authorName = data.author_name;
+      const { stdout } = await execFileAsync(ytdlpBin, args, { timeout: 25000 });
+      mediaInfo = JSON.parse(stdout.trim());
+    } catch (err: any) {
+      console.warn('[yt-dlp] Tweet extraction fallback:', err?.message);
+      mediaInfo = {
+        id: tweetId,
+        title: 'X / Twitter Video',
+        uploader: 'X Creator',
+        thumbnail: `https://vxtwitter.com/render/${tweetId}.jpg`,
+        duration: 0,
+      };
+    }
+
+    const rawTitle = mediaInfo.description || mediaInfo.title || 'X / Twitter Video';
+    const title = rawTitle.replace(/https:\/\/t\.co\/\w+/g, '').trim() || 'X / Twitter Video';
+    const cleanTitle = title.length > 90 ? title.substring(0, 90) + '...' : title;
+    const authorName = mediaInfo.uploader || mediaInfo.channel || 'X Creator';
+    const authorUsername = mediaInfo.uploader_id || authorName.replace(/[^\w]/g, '').toLowerCase();
+    const coverUrl = mediaInfo.thumbnail || `https://vxtwitter.com/render/${tweetId}.jpg`;
+
+    const width = mediaInfo.width || 0;
+    const height = mediaInfo.height || 0;
+    const isVertical = height > width || (height / (width || 1) >= 1.2);
+    const aspect_ratio: '9:16' | '16:9' = isVertical ? '9:16' : '16:9';
+
+    // Extract direct progressive MP4 URLs from formats for fast direct download & preview
+    let f1080Url = '';
+    let f720Url = '';
+    let f360Url = '';
+    if (Array.isArray(mediaInfo.formats)) {
+      const mp4Formats = mediaInfo.formats.filter((f: any) => f.url && (f.ext === 'mp4' || f.vcodec !== 'none'));
+      // Sort descending by largest dimension (handles both 16:9 landscape and 9:16 vertical)
+      mp4Formats.sort((a: any, b: any) => {
+        const dimA = Math.max(a.height || 0, a.width || 0);
+        const dimB = Math.max(b.height || 0, b.width || 0);
+        return dimB - dimA;
+      });
+
+      if (mp4Formats.length > 0) {
+        f1080Url = mp4Formats[0].url;
+        const f720 =
+          mp4Formats.find((f: any) => {
+            const minDim = Math.min(f.height || 0, f.width || 0);
+            return minDim <= 720;
+          }) || mp4Formats[mp4Formats.length - 1];
+        f720Url = f720.url;
+
+        const f360 =
+          mp4Formats.find((f: any) => {
+            const minDim = Math.min(f.height || 0, f.width || 0);
+            return minDim <= 480;
+          }) || mp4Formats[mp4Formats.length - 1];
+        f360Url = f360.url;
       }
-    } catch {}
+    } else if (mediaInfo.url) {
+      f1080Url = mediaInfo.url;
+      f720Url = mediaInfo.url;
+      f360Url = mediaInfo.url;
+    }
+
+    const videoUrl = f1080Url || f720Url || f360Url || mediaInfo.url || '';
 
     const downloads = [
       {
-        id: 'cf_twitter_fhd',
+        id: 'cf_twitter_1080p',
         label: '1080p Full HD (Recommended)',
         quality: '1080',
-        description: 'Original high-definition MP4 video with audio',
+        description: 'Original high-definition MP4 video with crisp audio',
         badge: '1080p FULL HD',
-        type: 'video',
+        type: 'video' as const,
         url: targetUrl,
-        extension: 'mp4',
+        directUrl: f1080Url,
+        extension: 'mp4' as const,
         isOriginal: true,
+      },
+      {
+        id: 'cf_twitter_720p',
+        label: '720p HD (Fast Download)',
+        quality: '720',
+        description: 'Standard HD MP4 — quick to save and share',
+        badge: '720p HD',
+        type: 'video' as const,
+        url: targetUrl,
+        directUrl: f720Url,
+        extension: 'mp4' as const,
+      },
+      {
+        id: 'cf_twitter_360p',
+        label: '360p Standard MP4 (Instant)',
+        quality: '360',
+        description: 'Compact file size with audio for instant saving',
+        badge: 'FAST MP4',
+        type: 'video' as const,
+        url: targetUrl,
+        directUrl: f360Url,
+        extension: 'mp4' as const,
       },
       {
         id: 'cf_twitter_audio',
         label: '320kbps MP3 Audio',
         quality: '320k',
-        description: 'Extracted audio track',
+        description: 'Extract background speech or music as 320kbps MP3',
         badge: 'MP3 AUDIO',
-        type: 'audio',
+        type: 'audio' as const,
         url: targetUrl,
-        extension: 'mp3',
+        directUrl: f1080Url || f720Url,
+        extension: 'mp3' as const,
+      },
+      {
+        id: 'cf_twitter_thumb',
+        label: 'HD Thumbnail Cover',
+        quality: 'HD',
+        description: 'Full-resolution video thumbnail artwork in JPG',
+        badge: 'THUMBNAIL',
+        type: 'thumbnail' as const,
+        url: coverUrl,
+        directUrl: coverUrl,
+        extension: 'jpg' as const,
       },
     ];
 
@@ -668,13 +772,15 @@ app.get('/api/info', async (req, res) => {
       data: {
         id: tweetId,
         platform: 'twitter',
-        originalUrl: targetUrl,
-        title,
+        originalUrl: cleanUrl,
+        title: cleanTitle,
         authorName,
-        coverUrl: `https://vxtwitter.com/render/${tweetId}.jpg`,
-        aspect_ratio: '16:9',
-        width: 1920,
-        height: 1080,
+        authorUsername,
+        coverUrl,
+        videoUrl,
+        aspect_ratio,
+        width,
+        height,
         downloads,
       },
     });
