@@ -194,10 +194,10 @@ export const ResultCard: React.FC<ResultCardProps> = ({
                 <div
                   key={option.id}
                   onClick={() => setSelectedDownloadId(option.id)}
-                  className={`px-3.5 py-3 sm:px-4 sm:py-3.5 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-3 h-[72px] sm:h-[76px] ${
+                  className={`px-3.5 py-3 sm:px-4 sm:py-3.5 rounded-2xl transition-all cursor-pointer flex items-center justify-between gap-3 h-[72px] sm:h-[76px] ${
                     isSelected
-                      ? 'border-emerald-500 bg-emerald-50/70 dark:bg-emerald-950/25 ring-2 ring-emerald-500/25 shadow-sm'
-                      : 'border-zinc-200 dark:border-zinc-800 bg-zinc-50/80 dark:bg-zinc-800/40 hover:border-zinc-300 dark:hover:border-zinc-700 hover:bg-zinc-100/70 dark:hover:bg-zinc-800/80'
+                      ? 'border-2 border-emerald-500 bg-emerald-50/70 dark:bg-emerald-950/25 ring-2 ring-emerald-500/25 shadow-sm'
+                      : 'border border-zinc-200 dark:border-zinc-800 bg-zinc-50/80 dark:bg-zinc-800/40 hover:border-emerald-500/60 dark:hover:border-emerald-500/60 hover:bg-zinc-100/70 dark:hover:bg-zinc-800/80'
                   }`}
                 >
                   <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -252,11 +252,9 @@ export const ResultCard: React.FC<ResultCardProps> = ({
                     }}
                     disabled={isDownloading}
                     className={`min-w-[84px] sm:min-w-[92px] h-9 sm:h-10 px-3.5 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center justify-center gap-1.5 cursor-pointer disabled:cursor-wait ${
-                      isSuccess
-                        ? 'bg-emerald-500 text-white'
-                        : option.isOriginal
-                        ? 'bg-gradient-to-r from-emerald-500 to-teal-500 hover:opacity-90 text-white shadow-sm shadow-emerald-500/25 active:scale-95'
-                        : 'bg-white dark:bg-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 active:scale-95'
+                      isDownloading || isSuccess
+                        ? 'bg-emerald-500 text-white shadow-sm shadow-emerald-500/25 active:scale-95'
+                        : 'bg-white dark:bg-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 active:scale-95 hover:border-zinc-300 dark:hover:border-zinc-600'
                     }`}
                   >
                     {isDownloading ? (
