@@ -134,28 +134,28 @@ export const CleanTopicScraper: React.FC<CleanTopicScraperProps> = ({
       
       {/* Intro Header */}
       <div className="text-center mb-8">
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 dark:text-emerald-400 light:text-emerald-700 text-xs font-semibold mb-3">
-          <ShieldCheck className="w-4 h-4 text-emerald-400" />
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs font-semibold mb-3">
+          <ShieldCheck className="w-4 h-4 text-emerald-500" />
           <span>AI Clean-Frame Gatekeeper Active</span>
         </div>
-        <h2 className="text-2xl sm:text-4xl font-extrabold text-white dark:text-white light:text-zinc-900 tracking-tight">
-          Clean Viral <span className="text-emerald-400 dark:text-emerald-400 light:text-emerald-600">Topic Scraper</span>
+        <h2 className="text-2xl sm:text-4xl font-extrabold text-zinc-900 dark:text-white tracking-tight">
+          Clean Viral <span className="text-emerald-600 dark:text-emerald-400">Topic Scraper</span>
         </h2>
-        <p className="mt-2 text-sm sm:text-base text-zinc-400 dark:text-zinc-400 light:text-zinc-600 max-w-2xl mx-auto">
+        <p className="mt-2 text-sm sm:text-base text-zinc-600 dark:text-zinc-400 max-w-2xl mx-auto">
           Discover high-retention viral footage filtered by aspect ratio. Our OpenCV vision filter automatically rejects burned-in subtitles, hook text, and logos.
         </p>
       </div>
 
       {/* Scraper Configuration Card */}
-      <div className="w-full rounded-3xl bg-zinc-900/90 dark:bg-zinc-900/90 light:bg-white border border-zinc-800 dark:border-zinc-800 light:border-zinc-200 shadow-2xl p-5 sm:p-7">
+      <div className="w-full rounded-3xl bg-white dark:bg-zinc-900/90 border border-zinc-200 dark:border-zinc-800 shadow-2xl p-5 sm:p-7">
         
         {/* Topic Input */}
         <div className="mb-5">
-          <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 dark:text-zinc-400 light:text-zinc-500 mb-2">
+          <label className="block text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">
             Target Topic or Niche
           </label>
           <div className="relative flex items-center">
-            <Search className="absolute left-3.5 w-5 h-5 text-emerald-400" />
+            <Search className="absolute left-3.5 w-5 h-5 text-emerald-500" />
             <input
               type="text"
               value={topic}
@@ -163,7 +163,7 @@ export const CleanTopicScraper: React.FC<CleanTopicScraperProps> = ({
               placeholder='e.g. "oddly satisfying kinetic sand", "aesthetic coffee routine", "wood carving ASMR"...'
               disabled={isScraping}
               onKeyDown={(e) => e.key === 'Enter' && handleStartScrape()}
-              className="w-full pl-11 pr-4 py-3 bg-zinc-950/70 dark:bg-zinc-950/70 light:bg-zinc-50 rounded-2xl border border-zinc-800 dark:border-zinc-800 light:border-zinc-300 text-sm sm:text-base text-zinc-100 dark:text-zinc-100 light:text-zinc-900 placeholder-zinc-500 focus:outline-none focus:border-emerald-500 transition-colors"
+              className="w-full pl-11 pr-4 py-3 bg-zinc-50 dark:bg-zinc-950/70 rounded-2xl border border-zinc-300 dark:border-zinc-800 text-sm sm:text-base text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-500 focus:outline-none focus:border-emerald-500 transition-colors"
             />
           </div>
         </div>
@@ -173,17 +173,17 @@ export const CleanTopicScraper: React.FC<CleanTopicScraperProps> = ({
           
           {/* 1. Target Aspect Ratio */}
           <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 dark:text-zinc-400 light:text-zinc-500 mb-2">
+            <label className="block text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">
               Target Aspect Ratio
             </label>
-            <div className="grid grid-cols-3 gap-1.5 p-1 bg-zinc-950/70 dark:bg-zinc-950/70 light:bg-zinc-100 rounded-xl border border-zinc-800 dark:border-zinc-800 light:border-zinc-200">
+            <div className="grid grid-cols-3 gap-1.5 p-1 bg-zinc-100 dark:bg-zinc-950/70 rounded-xl border border-zinc-200 dark:border-zinc-800">
               <button
                 type="button"
                 onClick={() => setTargetRatio('9:16')}
-                className={`flex items-center justify-center gap-1.5 py-2 px-1 rounded-lg text-xs font-bold transition-all ${
+                className={`flex items-center justify-center gap-1.5 py-2 px-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                   targetRatio === '9:16'
                     ? 'bg-emerald-500 text-white shadow-md'
-                    : 'text-zinc-400 hover:text-white'
+                    : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
                 }`}
               >
                 <Smartphone className="w-3.5 h-3.5" />
@@ -193,10 +193,10 @@ export const CleanTopicScraper: React.FC<CleanTopicScraperProps> = ({
               <button
                 type="button"
                 onClick={() => setTargetRatio('16:9')}
-                className={`flex items-center justify-center gap-1.5 py-2 px-1 rounded-lg text-xs font-bold transition-all ${
+                className={`flex items-center justify-center gap-1.5 py-2 px-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                   targetRatio === '16:9'
                     ? 'bg-emerald-500 text-white shadow-md'
-                    : 'text-zinc-400 hover:text-white'
+                    : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
                 }`}
               >
                 <Monitor className="w-3.5 h-3.5" />
@@ -206,10 +206,10 @@ export const CleanTopicScraper: React.FC<CleanTopicScraperProps> = ({
               <button
                 type="button"
                 onClick={() => setTargetRatio('unknown')}
-                className={`flex items-center justify-center gap-1.5 py-2 px-1 rounded-lg text-xs font-bold transition-all ${
+                className={`flex items-center justify-center gap-1.5 py-2 px-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                   targetRatio === 'unknown'
                     ? 'bg-emerald-500 text-white shadow-md'
-                    : 'text-zinc-400 hover:text-white'
+                    : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
                 }`}
               >
                 <Layers className="w-3.5 h-3.5" />
@@ -220,19 +220,19 @@ export const CleanTopicScraper: React.FC<CleanTopicScraperProps> = ({
 
           {/* 2. Number of Clean Clips */}
           <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 dark:text-zinc-400 light:text-zinc-500 mb-2">
+            <label className="block text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">
               Clean Clips Count
             </label>
-            <div className="grid grid-cols-4 gap-1.5 p-1 bg-zinc-950/70 dark:bg-zinc-950/70 light:bg-zinc-100 rounded-xl border border-zinc-800 dark:border-zinc-800 light:border-zinc-200">
+            <div className="grid grid-cols-4 gap-1.5 p-1 bg-zinc-100 dark:bg-zinc-950/70 rounded-xl border border-zinc-200 dark:border-zinc-800">
               {[3, 5, 10, 20].map((num) => (
                 <button
                   key={num}
                   type="button"
                   onClick={() => setClipCount(num)}
-                  className={`py-2 rounded-lg text-xs font-bold transition-all ${
+                  className={`py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                     clipCount === num
                       ? 'bg-emerald-500 text-white shadow-md'
-                      : 'text-zinc-400 hover:text-white'
+                      : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
                   }`}
                 >
                   {num} Clips
@@ -243,7 +243,7 @@ export const CleanTopicScraper: React.FC<CleanTopicScraperProps> = ({
 
           {/* 3. Platform Sources */}
           <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 dark:text-zinc-400 light:text-zinc-500 mb-2">
+            <label className="block text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">
               Target Sources
             </label>
             <div className="flex flex-wrap gap-1.5">
@@ -254,10 +254,10 @@ export const CleanTopicScraper: React.FC<CleanTopicScraperProps> = ({
                     key={p}
                     type="button"
                     onClick={() => togglePlatform(p)}
-                    className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold capitalize border transition-all ${
+                    className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold capitalize border transition-all cursor-pointer ${
                       isChecked
-                        ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400'
-                        : 'bg-zinc-950/50 border-zinc-800 text-zinc-500 hover:text-zinc-300'
+                        ? 'bg-emerald-500/20 border-emerald-500 text-emerald-600 dark:text-emerald-400'
+                        : 'bg-zinc-100 dark:bg-zinc-950/50 border-zinc-200 dark:border-zinc-800 text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200'
                     }`}
                   >
                     {p === 'youtube' ? 'YouTube Shorts' : p}
@@ -315,13 +315,13 @@ export const CleanTopicScraper: React.FC<CleanTopicScraperProps> = ({
         <div className="w-full mt-10">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
             <div>
-              <h3 className="text-xl sm:text-2xl font-bold text-white dark:text-white light:text-zinc-900 flex items-center gap-2">
+              <h3 className="text-xl sm:text-2xl font-bold text-zinc-900 dark:text-white flex items-center gap-2">
                 <span>Clean Viral Archive</span>
-                <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400">
+                <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400">
                   {results.length} Clips Verified
                 </span>
               </h3>
-              <p className="text-xs sm:text-sm text-zinc-400 dark:text-zinc-400 light:text-zinc-600">
+              <p className="text-xs sm:text-sm text-zinc-600 dark:text-zinc-400">
                 All clips passed OpenCV frame inspection with 0 text/subtitles.
               </p>
             </div>
@@ -330,7 +330,7 @@ export const CleanTopicScraper: React.FC<CleanTopicScraperProps> = ({
             <button
               onClick={handleDownloadAllZip}
               disabled={isZipping}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white font-bold text-xs sm:text-sm shadow-lg shadow-emerald-500/25 active:scale-95 transition-all"
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white font-bold text-xs sm:text-sm shadow-lg shadow-emerald-500/25 active:scale-95 transition-all cursor-pointer"
             >
               {isZipping ? (
                 <>
@@ -351,7 +351,7 @@ export const CleanTopicScraper: React.FC<CleanTopicScraperProps> = ({
             {results.map((clip, idx) => (
               <div
                 key={clip.id || idx}
-                className="rounded-2xl bg-zinc-900/80 dark:bg-zinc-900/80 light:bg-white border border-zinc-800 dark:border-zinc-800 light:border-zinc-200 overflow-hidden shadow-xl hover:border-emerald-500/50 transition-all flex flex-col group"
+                className="rounded-2xl bg-white dark:bg-zinc-900/80 border border-zinc-200 dark:border-zinc-800 overflow-hidden shadow-lg shadow-zinc-200/50 dark:shadow-xl hover:border-emerald-500/50 transition-all flex flex-col group"
               >
                 {/* Media Thumbnail */}
                 <div className="relative aspect-video bg-zinc-950 overflow-hidden">
@@ -385,24 +385,24 @@ export const CleanTopicScraper: React.FC<CleanTopicScraperProps> = ({
                 {/* Body */}
                 <div className="p-4 flex-1 flex flex-col justify-between">
                   <div>
-                    <div className="flex items-center gap-1.5 mb-1 text-[11px] font-semibold text-zinc-400 capitalize">
-                      <span className="text-emerald-400 font-bold">{clip.platform}</span>
+                    <div className="flex items-center gap-1.5 mb-1 text-[11px] font-semibold text-zinc-500 dark:text-zinc-400 capitalize">
+                      <span className="text-emerald-500 font-bold">{clip.platform}</span>
                       <span>•</span>
                       <span className="truncate max-w-[140px]">{clip.author}</span>
                     </div>
-                    <h4 className="text-xs sm:text-sm font-bold text-white dark:text-white light:text-zinc-900 line-clamp-2 mb-2">
+                    <h4 className="text-xs sm:text-sm font-bold text-zinc-900 dark:text-white line-clamp-2 mb-2">
                       {clip.title}
                     </h4>
                   </div>
 
                   {/* Actions */}
-                  <div className="mt-3 pt-3 border-t border-zinc-800/80 dark:border-zinc-800/80 light:border-zinc-100 flex items-center gap-2">
+                  <div className="mt-3 pt-3 border-t border-zinc-100 dark:border-zinc-800/80 flex items-center gap-2">
                     <a
                       href={clip.video_url}
                       target="_blank"
                       rel="noopener noreferrer"
                       download={`clean_${clip.id}.mp4`}
-                      className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-white font-bold text-xs shadow-md shadow-emerald-500/20 transition-all active:scale-95"
+                      className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-white font-bold text-xs shadow-md shadow-emerald-500/20 transition-all active:scale-95 cursor-pointer"
                     >
                       <Download className="w-3.5 h-3.5" />
                       <span>Download Clean MP4</span>

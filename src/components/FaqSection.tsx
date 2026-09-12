@@ -30,10 +30,10 @@ export const FaqSection: React.FC = () => {
   return (
     <section className="py-14 sm:py-18 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
       <div className="text-center mb-10">
-        <h2 className="text-2xl sm:text-3xl font-extrabold text-white dark:text-white light:text-zinc-900">
+        <h2 className="text-2xl sm:text-3xl font-extrabold text-zinc-900 dark:text-white">
           Frequently Asked Questions
         </h2>
-        <p className="mt-2 text-xs sm:text-sm text-zinc-400 dark:text-zinc-400 light:text-zinc-600">
+        <p className="mt-2 text-xs sm:text-sm text-zinc-600 dark:text-zinc-400">
           Got questions about ClipFlux? We have answers.
         </p>
       </div>
@@ -44,17 +44,17 @@ export const FaqSection: React.FC = () => {
           return (
             <div
               key={idx}
-              className="rounded-2xl bg-zinc-900/60 dark:bg-zinc-900/60 light:bg-white border border-zinc-800 dark:border-zinc-800 light:border-zinc-200 overflow-hidden transition-all"
+              className="rounded-2xl bg-white dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800 shadow-sm overflow-hidden transition-all"
             >
               <button
                 onClick={() => setOpenIndex(isOpen ? null : idx)}
-                className="w-full flex items-center justify-between p-4 sm:p-5 text-left text-xs sm:text-sm font-bold text-white dark:text-white light:text-zinc-900"
+                className="w-full flex items-center justify-between p-4 sm:p-5 text-left text-xs sm:text-sm font-bold text-zinc-900 dark:text-white cursor-pointer"
               >
                 <span>{faq.q}</span>
-                <ChevronDown className={`w-4 h-4 text-emerald-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+                <ChevronDown className={`w-4 h-4 text-emerald-500 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
               </button>
               {isOpen && (
-                <div className="px-4 pb-4 sm:px-5 sm:pb-5 text-xs sm:text-sm text-zinc-400 dark:text-zinc-400 light:text-zinc-600 leading-relaxed border-t border-zinc-800/40 dark:border-zinc-800/40 light:border-zinc-100 pt-3">
+                <div className="px-4 pb-4 sm:px-5 sm:pb-5 text-xs sm:text-sm text-zinc-600 dark:text-zinc-400 leading-relaxed border-t border-zinc-100 dark:border-zinc-800/40 pt-3">
                   {faq.a}
                 </div>
               )}

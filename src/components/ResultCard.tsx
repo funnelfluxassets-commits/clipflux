@@ -33,6 +33,9 @@ export const ResultCard: React.FC<ResultCardProps> = ({
   const [copiedCaption, setCopiedCaption] = useState(false);
   const [downloadSuccessId, setDownloadSuccessId] = useState<string | null>(null);
   const [isPlayingVideo, setIsPlayingVideo] = useState(false);
+  const [selectedDownloadId, setSelectedDownloadId] = useState<string | null>(
+    () => media.downloads.find((d) => d.isOriginal)?.id || media.downloads[0]?.id || null
+  );
 
   // Filename Presets
   const cleanForFilename = (str: string): string => {
@@ -183,13 +186,19 @@ export const ResultCard: React.FC<ResultCardProps> = ({
           {/* Stacked Format Cards (Identical Height & Clean Layout) */}
           <div className="space-y-2.5 max-h-[340px] overflow-y-auto pr-1">
             {media.downloads.map((option) => {
+              const isSelected = selectedDownloadId === option.id;
               const isDownloading = downloadingId === option.id;
               const isSuccess = downloadSuccessId === option.id;
 
               return (
                 <div
                   key={option.id}
-                  className="px-3.5 py-3 sm:px-4 sm:py-3.5 rounded-2xl border border-zinc-200 dark:border-zinc-800 hover:border-emerald-500/40 dark:hover:border-emerald-500/40 bg-zinc-50/50 dark:bg-zinc-850/50 flex items-center justify-between gap-3 h-[72px] sm:h-[76px] transition-all"
+                  onClick={() => setSelectedDownloadId(option.id)}
+                  className={`px-3.5 py-3 sm:px-4 sm:py-3.5 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-3 h-[72px] sm:h-[76px] ${
+                    isSelected
+                      ? 'border-emerald-500 bg-emerald-50/70 dark:bg-emerald-950/25 ring-2 ring-emerald-500/25 shadow-sm'
+                      : 'border-zinc-200 dark:border-zinc-800 bg-zinc-50/80 dark:bg-zinc-800/40 hover:border-zinc-300 dark:hover:border-zinc-700 hover:bg-zinc-100/70 dark:hover:bg-zinc-800/80'
+                  }`}
                 >
                   <div className="flex items-center gap-3 min-w-0 flex-1">
                     <div
@@ -235,7 +244,8 @@ export const ResultCard: React.FC<ResultCardProps> = ({
 
                   <button
                     type="button"
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.stopPropagation();
                       onDownload(option, customFilename);
                       setDownloadSuccessId(option.id);
                       setTimeout(() => setDownloadSuccessId(null), 3000);
@@ -310,7 +320,7 @@ export const ResultCard: React.FC<ResultCardProps> = ({
                   className={`px-2 py-0.5 rounded-lg text-[10px] font-semibold transition-all ${
                     activePreset === 'author_title'
                       ? 'bg-emerald-500 text-white shadow-sm'
-                      : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:text-white hover:bg-zinc-700'
+                      : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-200 dark:hover:bg-zinc-700'
                   }`}
                 >
                   Author + Title
@@ -321,7 +331,7 @@ export const ResultCard: React.FC<ResultCardProps> = ({
                   className={`px-2 py-0.5 rounded-lg text-[10px] font-semibold transition-all ${
                     activePreset === 'title_only'
                       ? 'bg-emerald-500 text-white shadow-sm'
-                      : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:text-white hover:bg-zinc-700'
+                      : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-200 dark:hover:bg-zinc-700'
                   }`}
                 >
                   Title Only
@@ -332,7 +342,7 @@ export const ResultCard: React.FC<ResultCardProps> = ({
                   className={`px-2 py-0.5 rounded-lg text-[10px] font-semibold transition-all ${
                     activePreset === 'author_id'
                       ? 'bg-emerald-500 text-white shadow-sm'
-                      : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:text-white hover:bg-zinc-700'
+                      : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-200 dark:hover:bg-zinc-700'
                   }`}
                 >
                   Author + ID

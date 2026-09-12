@@ -47,14 +47,14 @@ export const FeatureHighlights: React.FC = () => {
   return (
     <section className="py-16 sm:py-20 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div className="text-center max-w-3xl mx-auto mb-12">
-        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-bold mb-3">
-          <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs font-bold mb-3">
+          <Sparkles className="w-3.5 h-3.5 text-emerald-500" />
           <span>ENGINEERED FOR MODERN CREATORS</span>
         </div>
-        <h2 className="text-2xl sm:text-4xl font-extrabold text-white dark:text-white light:text-zinc-900 tracking-tight">
+        <h2 className="text-2xl sm:text-4xl font-extrabold text-zinc-900 dark:text-white tracking-tight">
           Everything You Need to Recreate Viral Trends
         </h2>
-        <p className="mt-3 text-sm sm:text-base text-zinc-400 dark:text-zinc-400 light:text-zinc-600">
+        <p className="mt-3 text-sm sm:text-base text-zinc-600 dark:text-zinc-400">
           Built for video editors, faceless channel owners, and media agencies who need clean, watermark-free B-roll at scale.
         </p>
       </div>
@@ -63,15 +63,15 @@ export const FeatureHighlights: React.FC = () => {
         {features.map((f, i) => (
           <div
             key={i}
-            className="p-6 rounded-3xl bg-zinc-900/60 dark:bg-zinc-900/60 light:bg-white border border-zinc-800 dark:border-zinc-800 light:border-zinc-200 hover:border-emerald-500/40 transition-all group"
+            className="p-6 rounded-3xl bg-white dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800 shadow-lg shadow-zinc-200/50 dark:shadow-none hover:border-emerald-500/40 dark:hover:border-emerald-500/40 transition-all group"
           >
             <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mb-4 group-hover:scale-110 group-hover:bg-emerald-500/20 transition-all">
               {f.icon}
             </div>
-            <h3 className="text-base sm:text-lg font-bold text-white dark:text-white light:text-zinc-900 mb-2">
+            <h3 className="text-base sm:text-lg font-bold text-zinc-900 dark:text-white mb-2">
               {f.title}
             </h3>
-            <p className="text-xs sm:text-sm text-zinc-400 dark:text-zinc-400 light:text-zinc-600 leading-relaxed">
+            <p className="text-xs sm:text-sm text-zinc-600 dark:text-zinc-400 leading-relaxed">
               {f.description}
             </p>
           </div>

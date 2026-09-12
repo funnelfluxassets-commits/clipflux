@@ -3,10 +3,10 @@ import { Heart, Shield } from 'lucide-react';
 
 export const Footer: React.FC = () => {
   return (
-    <footer className="border-t border-zinc-800/80 dark:border-zinc-800/80 light:border-zinc-200 bg-zinc-950/90 dark:bg-zinc-950/90 light:bg-zinc-50 py-10 transition-colors">
+    <footer className="border-t border-zinc-200 dark:border-zinc-800/80 bg-zinc-100/60 dark:bg-zinc-950/90 py-10 transition-colors">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-zinc-500">
         <div className="flex items-center gap-2">
-          <span className="font-bold text-zinc-300 dark:text-zinc-300 light:text-zinc-800">ClipFlux</span>
+          <span className="font-bold text-zinc-800 dark:text-zinc-300">ClipFlux</span>
           <span>•</span>
           <span>Universal 7-in-1 Downloader & Clean Topic Scraper</span>
         </div>

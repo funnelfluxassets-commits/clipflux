@@ -27,37 +27,37 @@ export const PricingModal: React.FC<PricingModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in">
-      <div className="relative w-full max-w-4xl rounded-3xl bg-zinc-900 dark:bg-zinc-900 light:bg-white border border-zinc-800 dark:border-zinc-800 light:border-zinc-200 shadow-2xl p-6 sm:p-9 overflow-y-auto max-h-[90vh]">
+      <div className="relative w-full max-w-4xl rounded-3xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-2xl p-6 sm:p-9 overflow-y-auto max-h-[90vh]">
         
         {/* Close */}
         <button
           onClick={onClose}
-          className="absolute top-5 right-5 p-2 rounded-xl text-zinc-400 hover:text-white dark:hover:text-white light:hover:text-zinc-900 hover:bg-zinc-800 dark:hover:bg-zinc-800 light:hover:bg-zinc-100 transition-colors"
+          className="absolute top-5 right-5 p-2 rounded-xl text-zinc-400 hover:text-zinc-700 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
         >
           <X className="w-5 h-5" />
         </button>
 
         {/* Title */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-bold mb-3">
-            <Zap className="w-3.5 h-3.5 text-emerald-400 fill-emerald-400" />
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs font-bold mb-3">
+            <Zap className="w-3.5 h-3.5 text-emerald-500 fill-emerald-500" />
             <span>INSTANT VIRAL CREATOR PLANS</span>
           </div>
-          <h2 className="text-2xl sm:text-3xl font-black text-white dark:text-white light:text-zinc-900">
-            Supercharge Your Workflow with <span className="text-emerald-400">ClipFlux</span>
+          <h2 className="text-2xl sm:text-3xl font-black text-zinc-900 dark:text-white">
+            Supercharge Your Workflow with <span className="text-emerald-600 dark:text-emerald-400">ClipFlux</span>
           </h2>
-          <p className="text-xs sm:text-sm text-zinc-400 dark:text-zinc-400 light:text-zinc-600 mt-1 max-w-lg mx-auto">
+          <p className="text-xs sm:text-sm text-zinc-600 dark:text-zinc-400 mt-1 max-w-lg mx-auto">
             Unlimited 7-in-1 Full HD downloads, automated clean viral topic scraping, and 1-click batch ZIP exports.
           </p>
 
           {/* Payment gateway switch */}
-          <div className="mt-4 inline-flex items-center p-1 bg-zinc-950 dark:bg-zinc-950 light:bg-zinc-100 rounded-xl border border-zinc-800 dark:border-zinc-800 light:border-zinc-200">
+          <div className="mt-4 inline-flex items-center p-1 bg-zinc-100 dark:bg-zinc-950 rounded-xl border border-zinc-200 dark:border-zinc-800">
             <button
               onClick={() => setSelectedGateway('paystack')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                 selectedGateway === 'paystack'
                   ? 'bg-emerald-500 text-white shadow-sm'
-                  : 'text-zinc-400 hover:text-white'
+                  : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
               }`}
             >
               <CreditCard className="w-3.5 h-3.5" />
@@ -65,10 +65,10 @@ export const PricingModal: React.FC<PricingModalProps> = ({
             </button>
             <button
               onClick={() => setSelectedGateway('paypal')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                 selectedGateway === 'paypal'
                   ? 'bg-blue-600 text-white shadow-sm'
-                  : 'text-zinc-400 hover:text-white'
+                  : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
               }`}
             >
               <span>PayPal 1-Click</span>
@@ -80,41 +80,41 @@ export const PricingModal: React.FC<PricingModalProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           
           {/* Plan 1: ClipFlux Pro */}
-          <div className="relative rounded-2xl bg-zinc-950/60 dark:bg-zinc-950/60 light:bg-zinc-50 border border-zinc-800 dark:border-zinc-800 light:border-zinc-200 p-6 flex flex-col justify-between hover:border-emerald-500/40 transition-all">
+          <div className="relative rounded-2xl bg-zinc-50 dark:bg-zinc-950/60 border border-zinc-200 dark:border-zinc-800 p-6 flex flex-col justify-between hover:border-emerald-500/40 transition-all">
             <div>
               <div className="flex items-center justify-between gap-2 mb-2">
-                <h3 className="text-lg font-bold text-white dark:text-white light:text-zinc-900">ClipFlux Pro</h3>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                <h3 className="text-lg font-bold text-zinc-900 dark:text-white">ClipFlux Pro</h3>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
                   POPULAR
                 </span>
               </div>
               <div className="flex items-baseline gap-1 my-3">
-                <span className="text-3xl sm:text-4xl font-black text-white dark:text-white light:text-zinc-900">$29</span>
-                <span className="text-xs text-zinc-400">/ month</span>
+                <span className="text-3xl sm:text-4xl font-black text-zinc-900 dark:text-white">$29</span>
+                <span className="text-xs text-zinc-500 dark:text-zinc-400">/ month</span>
               </div>
-              <p className="text-xs text-zinc-400 mb-5">
+              <p className="text-xs text-zinc-600 dark:text-zinc-400 mb-5">
                 Ideal for content creators, video editors, and agency builders scaling their short-form pipeline.
               </p>
 
-              <ul className="space-y-2.5 text-xs text-zinc-300 dark:text-zinc-300 light:text-zinc-700">
+              <ul className="space-y-2.5 text-xs text-zinc-700 dark:text-zinc-300">
                 <li className="flex items-center gap-2">
-                  <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <Check className="w-4 h-4 text-emerald-500 shrink-0" />
                   <span><strong>100 Clean Scrapes</strong> per month</span>
                 </li>
                 <li className="flex items-center gap-2">
-                  <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <Check className="w-4 h-4 text-emerald-500 shrink-0" />
                   <span><strong>Unlimited</strong> 7-in-1 Full HD 1080p downloads</span>
                 </li>
                 <li className="flex items-center gap-2">
-                  <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <Check className="w-4 h-4 text-emerald-500 shrink-0" />
                   <span>AI Clean-Frame Gatekeeper (No text / subtitles)</span>
                 </li>
                 <li className="flex items-center gap-2">
-                  <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <Check className="w-4 h-4 text-emerald-500 shrink-0" />
                   <span>Custom Filename Presets & MP3 extraction</span>
                 </li>
                 <li className="flex items-center gap-2">
-                  <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <Check className="w-4 h-4 text-emerald-500 shrink-0" />
                   <span>Standard community support</span>
                 </li>
               </ul>
@@ -122,34 +122,34 @@ export const PricingModal: React.FC<PricingModalProps> = ({
 
             <button
               onClick={() => onSelectPlan('pro', selectedGateway)}
-              className="mt-6 w-full py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-white font-bold text-xs sm:text-sm shadow-lg shadow-emerald-500/20 active:scale-95 transition-all"
+              className="mt-6 w-full py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-white font-bold text-xs sm:text-sm shadow-lg shadow-emerald-500/20 active:scale-95 transition-all cursor-pointer"
             >
               Get ClipFlux Pro
             </button>
           </div>
 
           {/* Plan 2: ClipFlux Suite */}
-          <div className="relative rounded-2xl bg-zinc-950/80 dark:bg-zinc-950/80 light:bg-zinc-50 border-2 border-emerald-500/60 p-6 flex flex-col justify-between shadow-xl shadow-emerald-500/10">
+          <div className="relative rounded-2xl bg-zinc-50 dark:bg-zinc-950/80 border-2 border-emerald-500/60 p-6 flex flex-col justify-between shadow-xl shadow-emerald-500/10">
             <div className="absolute -top-3 right-6 bg-gradient-to-r from-emerald-500 to-teal-500 text-white text-[10px] font-black uppercase tracking-wider px-3 py-0.5 rounded-full shadow-md">
               BEST VALUE • UNLIMITED
             </div>
 
             <div>
               <div className="flex items-center justify-between gap-2 mb-2">
-                <h3 className="text-lg font-bold text-white dark:text-white light:text-zinc-900 flex items-center gap-1.5">
-                  <Crown className="w-4 h-4 text-amber-400" />
+                <h3 className="text-lg font-bold text-zinc-900 dark:text-white flex items-center gap-1.5">
+                  <Crown className="w-4 h-4 text-amber-500" />
                   <span>ClipFlux Suite</span>
                 </h3>
               </div>
               <div className="flex items-baseline gap-1 my-3">
-                <span className="text-3xl sm:text-4xl font-black text-white dark:text-white light:text-zinc-900">$79</span>
-                <span className="text-xs text-zinc-400">/ month</span>
+                <span className="text-3xl sm:text-4xl font-black text-zinc-900 dark:text-white">$79</span>
+                <span className="text-xs text-zinc-500 dark:text-zinc-400">/ month</span>
               </div>
-              <p className="text-xs text-zinc-400 mb-5">
+              <p className="text-xs text-zinc-600 dark:text-zinc-400 mb-5">
                 Maximum power for production agencies, media teams, and power scrapers requiring unlimited throughput.
               </p>
 
-              <ul className="space-y-2.5 text-xs text-zinc-300 dark:text-zinc-300 light:text-zinc-700">
+              <ul className="space-y-2.5 text-xs text-zinc-700 dark:text-zinc-300">
                 <li className="flex items-center gap-2">
                   <Check className="w-4 h-4 text-emerald-400 shrink-0" />
                   <span><strong>Unlimited Clean Scrapes</strong> (zero cap)</span>

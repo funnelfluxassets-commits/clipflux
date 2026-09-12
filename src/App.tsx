@@ -225,7 +225,9 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-zinc-950 text-zinc-100 dark:bg-zinc-950 dark:text-zinc-100 light:bg-[#fafafa] light:text-zinc-900 transition-colors duration-200">
+    <div className="min-h-screen flex flex-col bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 transition-colors duration-200 relative overflow-x-hidden">
+      {/* Ambient Background Glow */}
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[320px] sm:w-[700px] h-[220px] sm:h-[350px] bg-gradient-to-tr from-emerald-500/15 via-teal-500/10 to-emerald-400/10 blur-3xl pointer-events-none rounded-full" />
       
       {/* Top Navigation */}
       <Navbar
@@ -240,19 +242,19 @@ export const App: React.FC = () => {
       />
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-14">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-14 relative z-10">
         
         {mode === 'downloader' ? (
           <div className="flex flex-col items-center">
             {/* Hero Heading */}
             <div className="text-center max-w-3xl mx-auto mb-8 sm:mb-10">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 dark:text-emerald-400 light:text-emerald-700 text-xs font-semibold mb-3">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs font-semibold mb-3">
                 <span>⚡ 7 Social Networks • 1 Unified Downloader</span>
               </div>
-              <h1 className="text-3xl sm:text-5xl font-black text-white dark:text-white light:text-zinc-900 tracking-tight leading-tight">
-                Universal <span className="text-emerald-400 dark:text-emerald-400 light:text-emerald-600">7-in-1 Media</span> Downloader
+              <h1 className="text-3xl sm:text-5xl font-black text-zinc-900 dark:text-white tracking-tight leading-tight">
+                Universal <span className="text-emerald-600 dark:text-emerald-400">7-in-1 Media</span> Downloader
               </h1>
-              <p className="mt-3 text-sm sm:text-base text-zinc-400 dark:text-zinc-400 light:text-zinc-600">
+              <p className="mt-3 text-sm sm:text-base text-zinc-600 dark:text-zinc-400">
                 Download Full HD videos, shorts, reels, audio & thumbnails with automatic aspect ratio detection and custom filename presets.
               </p>
             </div>
