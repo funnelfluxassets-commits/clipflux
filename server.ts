@@ -969,8 +969,12 @@ app.get('/api/download', async (req, res) => {
       ytUrl,
     ];
 
+    let ytdlpStdout = '';
+    let ytdlpStderr = '';
     try {
       const { stdout, stderr } = await execFileAsync(ytdlpBin, ytdlpArgs, { timeout: 55000 });
+      ytdlpStdout = stdout || '';
+      ytdlpStderr = stderr || '';
       console.log('[yt-dlp video success]', stdout?.slice(-200));
       if (stderr) console.warn('[yt-dlp video stderr]', stderr?.slice(-200));
     } catch (execErr: any) {
@@ -1015,6 +1019,8 @@ app.get('/api/download', async (req, res) => {
       return res.status(500).json({
         success: false,
         error: `Failed to find generated video file in /tmp. Available: ${JSON.stringify(existingInTmp)}`,
+        stdout: ytdlpStdout.slice(-500),
+        stderr: ytdlpStderr.slice(-500),
       });
     }
 
