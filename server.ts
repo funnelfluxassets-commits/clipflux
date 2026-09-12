@@ -841,16 +841,19 @@ app.get('/api/download', async (req, res) => {
         const videoId = shortsMatch?.[1] || watchMatch?.[1] || (targetUrl.length === 11 ? targetUrl : null);
         if (videoId) ytUrl = `https://www.youtube.com/watch?v=${videoId}`;
         extraArgs = [
-          '--extractor-args', 'youtube:player_client=android,visionos;formats=missing_pot',
+          '-f', 'ba/b/bestaudio/best',
+          '--extractor-args', 'youtube:player_client=web_embedded,web_creator;formats=missing_pot',
           ...ensureYouTubeCookiesFile(),
         ];
       } else {
-        extraArgs = ensureInstagramCookies();
+        extraArgs = [
+          '-f', 'ba/ba*/b/bestaudio/best',
+          ...ensureInstagramCookies(),
+        ];
       }
 
       const ffmpegArgs = ffmpegBin === 'ffmpeg' ? [] : ['--ffmpeg-location', ffmpegBin];
       const ytdlpArgs = [
-        '-f', 'ba/ba*/b/bestaudio/best',
         '-x',
         '--audio-format', 'mp3',
         '--audio-quality', '192K',
@@ -946,9 +949,8 @@ app.get('/api/download', async (req, res) => {
 
       const qNum = format.includes('720') ? 720 : 1080;
       extraArgs = [
-        '-S', `res:${qNum},ext:mp4:m4a`,
-        '-f', 'b/bv*+ba/best',
-        '--extractor-args', 'youtube:player_client=android,visionos;formats=missing_pot',
+        '-f', `bestvideo[height<=${qNum}]+bestaudio/best[height<=${qNum}]/best`,
+        '--extractor-args', 'youtube:player_client=web_embedded,web_creator;formats=missing_pot',
         '--merge-output-format', 'mp4',
         '--postprocessor-args', 'ffmpeg:-c:a aac -b:a 192k -movflags +faststart',
         ...ensureYouTubeCookiesFile(),
