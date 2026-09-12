@@ -16,6 +16,7 @@ import {
   AspectRatioType, 
   ScrapedClip 
 } from './types';
+import { Download, Sparkles } from 'lucide-react';
 import { auth } from './firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 
@@ -135,8 +136,10 @@ export const App: React.FC = () => {
     try {
       const filename = `${customFilename}.${option.extension}`;
 
-      // If there is a directUrl, attempt direct client download
-      if (option.directUrl) {
+      // Only direct client fetch IF it's a thumbnail/video OR if it's already a native MP3 url (like TikTok sound)
+      const isNativeMp3 = option.type === 'audio' && option.directUrl?.toLowerCase().includes('.mp3');
+
+      if (option.directUrl && (option.type !== 'audio' || isNativeMp3)) {
         try {
           const response = await fetch(option.directUrl);
           if (response.ok) {
@@ -157,8 +160,9 @@ export const App: React.FC = () => {
         }
       }
 
-      // Stream download via server endpoint
-      const downloadEndpoint = `/api/download?url=${encodeURIComponent(mediaResult?.originalUrl || '')}&format=${option.id}&filename=${encodeURIComponent(filename)}`;
+      // Stream download or MP3 conversion via server endpoint
+      const streamParam = option.directUrl ? `&streamUrl=${encodeURIComponent(option.directUrl)}` : '';
+      const downloadEndpoint = `/api/download?url=${encodeURIComponent(mediaResult?.originalUrl || '')}${streamParam}&format=${option.id}&filename=${encodeURIComponent(filename)}`;
       window.location.href = downloadEndpoint;
     } catch (e) {
       console.error(e);
@@ -231,19 +235,50 @@ export const App: React.FC = () => {
       
       {/* Top Navigation */}
       <Navbar
-        currentMode={mode}
-        onModeChange={setMode}
         theme={theme}
         onToggleTheme={toggleTheme}
         user={user}
         onOpenAuth={() => setAuthOpen(true)}
         onOpenPricing={() => setPricingOpen(true)}
         onSignOut={handleSignOut}
+        onLogoClick={() => setMode('downloader')}
       />
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-14 relative z-10">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10 relative z-10">
         
+        {/* Mode Switcher Tabs (Moved above Title in Page Body) */}
+        <div className="flex justify-center mb-6 sm:mb-8">
+          <div className="inline-flex items-center bg-zinc-100 dark:bg-zinc-900/90 p-1.5 rounded-full border border-zinc-200 dark:border-zinc-800 shadow-lg shadow-zinc-200/50 dark:shadow-none">
+            <button
+              onClick={() => setMode('downloader')}
+              className={`flex items-center gap-2 px-4 sm:px-6 py-2 rounded-full text-xs sm:text-sm font-bold transition-all duration-200 cursor-pointer ${
+                mode === 'downloader'
+                  ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/30'
+                  : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
+              }`}
+            >
+              <Download className="w-4 h-4" />
+              <span>7-in-1 Downloader</span>
+            </button>
+
+            <button
+              onClick={() => setMode('scraper')}
+              className={`flex items-center gap-2 px-4 sm:px-6 py-2 rounded-full text-xs sm:text-sm font-bold transition-all duration-200 cursor-pointer ${
+                mode === 'scraper'
+                  ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/30'
+                  : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
+              }`}
+            >
+              <Sparkles className="w-4 h-4 text-amber-500 dark:text-amber-300" />
+              <span>Clean Scraper</span>
+              <span className="text-[10px] bg-emerald-100 dark:bg-emerald-950/60 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 px-1.5 py-0.5 rounded-full font-mono font-bold">
+                AI Filter
+              </span>
+            </button>
+          </div>
+        </div>
+
         {mode === 'downloader' ? (
           <div className="flex flex-col items-center">
             {/* Hero Heading */}

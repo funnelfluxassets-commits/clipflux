@@ -15,25 +15,23 @@ import {
 import { UserProfile } from '../types';
 
 interface NavbarProps {
-  currentMode: 'downloader' | 'scraper';
-  onModeChange: (mode: 'downloader' | 'scraper') => void;
   theme: 'dark' | 'light';
   onToggleTheme: () => void;
   user: UserProfile | null;
   onOpenAuth: () => void;
   onOpenPricing: () => void;
   onSignOut: () => void;
+  onLogoClick?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
-  currentMode,
-  onModeChange,
   theme,
   onToggleTheme,
   user,
   onOpenAuth,
   onOpenPricing,
   onSignOut,
+  onLogoClick,
 }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -50,10 +48,10 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   return (
     <header className="sticky top-0 z-50 w-full backdrop-blur-xl bg-white/80 dark:bg-zinc-950/80 border-b border-zinc-200 dark:border-zinc-800/80 transition-colors duration-200">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-18 flex items-center justify-between gap-2 sm:gap-4">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-18 flex items-center justify-between gap-4">
         
         {/* Left: Brand Logo & Name */}
-        <div className="flex items-center gap-3 cursor-pointer select-none" onClick={() => onModeChange('downloader')}>
+        <div className="flex items-center gap-3 cursor-pointer select-none" onClick={onLogoClick}>
           <div className="relative flex items-center justify-center">
             <img 
               src="/logo-icon.png" 
@@ -81,36 +79,6 @@ export const Navbar: React.FC<NavbarProps> = ({
               Universal Media Engine
             </span>
           </div>
-        </div>
-
-        {/* Center: Mode Switcher Tabs */}
-        <div className="flex items-center bg-zinc-100 dark:bg-zinc-900/90 p-1 rounded-full border border-zinc-200 dark:border-zinc-800">
-          <button
-            onClick={() => onModeChange('downloader')}
-            className={`flex items-center gap-2 px-3 sm:px-5 py-1.5 rounded-full text-xs sm:text-sm font-semibold transition-all duration-200 ${
-              currentMode === 'downloader'
-                ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/30'
-                : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
-            }`}
-          >
-            <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-            <span>7-in-1 Downloader</span>
-          </button>
-
-          <button
-            onClick={() => onModeChange('scraper')}
-            className={`flex items-center gap-2 px-3 sm:px-5 py-1.5 rounded-full text-xs sm:text-sm font-semibold transition-all duration-200 ${
-              currentMode === 'scraper'
-                ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/30'
-                : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
-            }`}
-          >
-            <Sparkles className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-500 dark:text-amber-300" />
-            <span>Clean Scraper</span>
-            <span className="hidden md:inline text-[10px] bg-emerald-100 dark:bg-emerald-950/60 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 px-1.5 py-0.2 rounded-full font-mono">
-              AI Filter
-            </span>
-          </button>
         </div>
 
         {/* Right: Theme Toggle, Credits Pill, User Login / Profile */}

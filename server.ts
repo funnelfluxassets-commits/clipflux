@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import https from 'https';
 import http from 'http';
+import zlib from 'zlib';
 import { execFile, spawn } from 'child_process';
 import { promisify } from 'util';
 import dotenv from 'dotenv';
@@ -26,8 +27,11 @@ app.use(express.static(path.join(serverDir, 'dist')));
 
 const YTDLP_TMP_PATH = '/tmp/yt-dlp';
 const FFMPEG_TMP_PATH = '/tmp/ffmpeg';
+const FFMPEG_LINUX_URL = 'https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/ffmpeg-linux-x64.gz';
+
 let ytdlpReadyPath: string | null = null;
 let ffmpegReadyPath: string | null = null;
+let ffmpegSetupPromise: Promise<string> | null = null;
 
 async function getSystemYtDlp(): Promise<string | null> {
   const candidates = ['/usr/local/bin/yt-dlp', '/opt/homebrew/bin/yt-dlp', 'yt-dlp'];
@@ -101,13 +105,46 @@ async function ensureYtDlp(): Promise<string> {
 }
 
 async function ensureFfmpeg(): Promise<string> {
-  if (ffmpegReadyPath) return ffmpegReadyPath;
-  const sys = await getSystemFfmpeg();
-  if (sys) {
-    ffmpegReadyPath = sys;
-    return sys;
-  }
-  return 'ffmpeg';
+  if (ffmpegReadyPath && fs.existsSync(ffmpegReadyPath)) return ffmpegReadyPath;
+  if (ffmpegSetupPromise) return ffmpegSetupPromise;
+
+  ffmpegSetupPromise = (async () => {
+    // 1. Try system ffmpeg
+    const sys = await getSystemFfmpeg();
+    if (sys) {
+      ffmpegReadyPath = sys;
+      return sys;
+    }
+
+    // 2. Try cached /tmp/ffmpeg
+    if (fs.existsSync(FFMPEG_TMP_PATH)) {
+      try {
+        fs.chmodSync(FFMPEG_TMP_PATH, 0o755);
+        await execFileAsync(FFMPEG_TMP_PATH, ['-version'], { timeout: 4000 });
+        ffmpegReadyPath = FFMPEG_TMP_PATH;
+        return FFMPEG_TMP_PATH;
+      } catch {
+        try { fs.unlinkSync(FFMPEG_TMP_PATH); } catch {}
+      }
+    }
+
+    // 3. Download and gunzip static ffmpeg to /tmp/ffmpeg
+    console.log('[ffmpeg] Downloading static Linux ffmpeg to /tmp/ffmpeg...');
+    const res = await fetch(FFMPEG_LINUX_URL, { redirect: 'follow' });
+    if (!res.ok) throw new Error(`HTTP ${res.status} downloading ffmpeg`);
+    const arrayBuffer = await res.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    const uncompressed = zlib.gunzipSync(buffer);
+    fs.writeFileSync(FFMPEG_TMP_PATH, uncompressed);
+    fs.chmodSync(FFMPEG_TMP_PATH, 0o755);
+
+    await execFileAsync(FFMPEG_TMP_PATH, ['-version'], { timeout: 10000 });
+    console.log('[ffmpeg] Downloaded & verified /tmp/ffmpeg');
+    ffmpegReadyPath = FFMPEG_TMP_PATH;
+    return FFMPEG_TMP_PATH;
+  })();
+
+  return ffmpegSetupPromise;
 }
 
 // Background pre-warm
@@ -688,44 +725,105 @@ app.get('/api/info', async (req, res) => {
 // 2. /api/download - Universal Streaming Media Proxy
 app.get('/api/download', async (req, res) => {
   const targetUrl = req.query.url as string;
+  const streamUrl = req.query.streamUrl as string;
   const format = (req.query.format as string) || 'cf_1080p_fhd';
   const customFilename = (req.query.filename as string) || 'clipflux_media.mp4';
 
-  if (!targetUrl) {
+  if (!targetUrl && !streamUrl) {
     return res.status(400).send('Missing target URL');
   }
 
   try {
-    const ytdlpBin = await ensureYtDlp();
     const ffmpegBin = await ensureFfmpeg();
 
     res.setHeader('Content-Disposition', `attachment; filename="${customFilename}"`);
 
-    if (format.includes('audio')) {
+    // Audio Conversion Request (MP3)
+    if (format.includes('audio') || customFilename.endsWith('.mp3')) {
       res.setHeader('Content-Type', 'audio/mpeg');
+
+      // If we have a direct media stream URL (e.g. from Instagram, Twitter, etc.), convert directly to MP3 with ffmpeg!
+      if (streamUrl && streamUrl.startsWith('http')) {
+        try {
+          const tempId = `audio_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+          const tmpMp4 = path.join('/tmp', `${tempId}.mp4`);
+          const tmpMp3 = path.join('/tmp', `${tempId}.mp3`);
+
+          const cdnRes = await fetch(streamUrl, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+              'Referer': 'https://www.instagram.com/',
+            },
+          });
+
+          if (cdnRes.ok) {
+            const buffer = Buffer.from(await cdnRes.arrayBuffer());
+            fs.writeFileSync(tmpMp4, buffer);
+
+            await execFileAsync(ffmpegBin, [
+              '-i', tmpMp4,
+              '-vn',
+              '-acodec', 'libmp3lame',
+              '-b:a', '320k',
+              '-y',
+              tmpMp3,
+            ], { timeout: 30000 });
+
+            if (fs.existsSync(tmpMp3) && fs.statSync(tmpMp3).size > 0) {
+              const stat = fs.statSync(tmpMp3);
+              res.setHeader('Content-Length', String(stat.size));
+              res.setHeader('Cache-Control', 'no-cache');
+
+              const readStream = fs.createReadStream(tmpMp3);
+              readStream.pipe(res);
+
+              const cleanup = () => {
+                try {
+                  if (fs.existsSync(tmpMp4)) fs.unlinkSync(tmpMp4);
+                  if (fs.existsSync(tmpMp3)) fs.unlinkSync(tmpMp3);
+                } catch {}
+              };
+              res.on('finish', cleanup);
+              res.on('close', cleanup);
+              return;
+            }
+          }
+        } catch (convErr) {
+          console.warn('[audio-convert-direct failed, falling back to yt-dlp]', convErr);
+        }
+      }
+
+      // Fallback: yt-dlp extraction with ffmpeg
+      const ytdlpBin = await ensureYtDlp();
+      const cookieArgs = ensureInstagramCookies();
       const dlProc = spawn(ytdlpBin, [
         '-o', '-',
         '-x',
         '--audio-format', 'mp3',
         '--audio-quality', '0',
         '--ffmpeg-location', ffmpegBin,
+        ...cookieArgs,
         targetUrl,
       ]);
       dlProc.stdout.pipe(res);
       dlProc.stderr.on('data', () => {});
       req.on('close', () => dlProc.kill());
-    } else {
-      res.setHeader('Content-Type', 'video/mp4');
-      const dlProc = spawn(ytdlpBin, [
-        '-o', '-',
-        '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
-        '--ffmpeg-location', ffmpegBin,
-        targetUrl,
-      ]);
-      dlProc.stdout.pipe(res);
-      dlProc.stderr.on('data', () => {});
-      req.on('close', () => dlProc.kill());
+      return;
     }
+
+    // Video stream request
+    const ytdlpBin = await ensureYtDlp();
+    const ffmpegBinPath = await ensureFfmpeg();
+    res.setHeader('Content-Type', 'video/mp4');
+    const dlProc = spawn(ytdlpBin, [
+      '-o', '-',
+      '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+      '--ffmpeg-location', ffmpegBinPath,
+      targetUrl,
+    ]);
+    dlProc.stdout.pipe(res);
+    dlProc.stderr.on('data', () => {});
+    req.on('close', () => dlProc.kill());
   } catch (e: any) {
     console.error('[Download error]', e);
     if (!res.headersSent) {
