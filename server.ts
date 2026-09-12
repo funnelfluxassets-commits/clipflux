@@ -786,6 +786,126 @@ app.get('/api/info', async (req, res) => {
     });
   }
 
+  // ── Pinterest Handler ───────────────────────────────────────────────────────
+  if (platform === 'pinterest') {
+    const ytdlpBin = await ensureYtDlp();
+    const args = [
+      '--dump-json',
+      '--no-playlist',
+      '--no-warnings',
+      '--add-header', 'User-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      cleanUrlWithoutParams,
+    ];
+
+    let mediaInfo: any;
+    try {
+      const { stdout } = await execFileAsync(ytdlpBin, args, { timeout: 25000 });
+      mediaInfo = JSON.parse(stdout.trim());
+    } catch (err: any) {
+      console.warn('[yt-dlp] Pinterest extraction error:', err?.message);
+      throw new Error('Could not extract Pinterest video. Please check the URL.');
+    }
+
+    const title = mediaInfo.title || mediaInfo.description || 'Pinterest Video';
+    const authorName = mediaInfo.uploader || 'Pinterest Creator';
+    const authorUsername = mediaInfo.uploader_id || authorName.replace(/[^\w]/g, '').toLowerCase();
+    const coverUrl = mediaInfo.thumbnail || '';
+    const width = mediaInfo.width || 720;
+    const height = mediaInfo.height || 1280;
+    const aspect_ratio: '9:16' | '16:9' = (height / (width || 1) >= 1.2) ? '9:16' : '16:9';
+
+    // Find direct progressive MP4
+    let directMp4 = '';
+    if (Array.isArray(mediaInfo.formats)) {
+      // 1. Direct progressive MP4 format if present
+      const directFormat = mediaInfo.formats.find((f: any) => f.url && f.url.endsWith('.mp4') && !f.url.includes('.m3u8'));
+      if (directFormat) directMp4 = directFormat.url;
+
+      // 2. Derive 720p progressive MP4 from HLS pattern (v1.pinimg.com/videos/iht/hls/...)
+      if (!directMp4) {
+        for (const f of mediaInfo.formats) {
+          const match = f.url && f.url.match(/https:\/\/v1\.pinimg\.com\/videos\/(?:iht|mc)\/hls\/([a-f0-9/]+)_[0-9]+w\.m3u8/);
+          if (match && match[1]) {
+            directMp4 = `https://v1.pinimg.com/videos/iht/720p/${match[1]}.mp4`;
+            break;
+          }
+        }
+      }
+    }
+
+    if (!directMp4 && mediaInfo.url && mediaInfo.url.endsWith('.mp4')) {
+      directMp4 = mediaInfo.url;
+    }
+
+    const videoUrl = directMp4;
+
+    const downloads = [
+      {
+        id: 'cf_pinterest_1080p',
+        label: '1080p Full HD (Recommended)',
+        quality: '1080',
+        description: 'Original high-definition MP4 video with audio',
+        badge: '1080p FULL HD',
+        type: 'video' as const,
+        url: targetUrl,
+        directUrl: directMp4,
+        extension: 'mp4' as const,
+        isOriginal: true,
+      },
+      {
+        id: 'cf_pinterest_720p',
+        label: '720p HD (Fast Download)',
+        quality: '720',
+        description: 'Standard HD MP4 — quick to save and share',
+        badge: '720p HD',
+        type: 'video' as const,
+        url: targetUrl,
+        directUrl: directMp4,
+        extension: 'mp4' as const,
+      },
+      {
+        id: 'cf_pinterest_audio',
+        label: '320kbps MP3 Audio',
+        quality: '320k',
+        description: 'Clean extracted master audio track',
+        badge: 'MP3 AUDIO',
+        type: 'audio' as const,
+        url: targetUrl,
+        directUrl: directMp4,
+        extension: 'mp3' as const,
+      },
+      {
+        id: 'cf_pinterest_thumb',
+        label: 'HD Thumbnail Cover',
+        quality: 'HD',
+        description: 'Full-resolution video artwork in JPG',
+        badge: 'THUMBNAIL',
+        type: 'thumbnail' as const,
+        url: coverUrl,
+        directUrl: coverUrl,
+        extension: 'jpg' as const,
+      },
+    ];
+
+    return res.json({
+      success: true,
+      data: {
+        id: mediaInfo.id || 'pin',
+        platform: 'pinterest',
+        originalUrl: targetUrl,
+        title,
+        authorName,
+        authorUsername,
+        coverUrl,
+        videoUrl,
+        aspect_ratio,
+        width,
+        height,
+        downloads,
+      },
+    });
+  }
+
   // ── Universal Fallback via yt-dlp ───────────────────────────────────────────
   try {
     const ytdlpBin = await ensureYtDlp();
@@ -1114,7 +1234,8 @@ app.get('/api/download', async (req, res) => {
       ];
     } else {
       extraArgs = [
-        '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+        '-f', 'bestvideo+bestaudio/best',
+        '--merge-output-format', 'mp4',
         ...ensureInstagramCookies(),
       ];
     }
