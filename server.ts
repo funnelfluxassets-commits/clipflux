@@ -25,6 +25,7 @@ app.use(express.static(path.join(serverDir, 'dist')));
 // ─── Binary Managers (yt-dlp & ffmpeg) ────────────────────────────────────────
 
 const YTDLP_TMP_PATH = '/tmp/yt-dlp';
+const FFMPEG_TMP_PATH = '/tmp/ffmpeg';
 let ytdlpReadyPath: string | null = null;
 let ffmpegReadyPath: string | null = null;
 
@@ -113,6 +114,115 @@ async function ensureFfmpeg(): Promise<string> {
 ensureYtDlp().catch(() => {});
 ensureFfmpeg().catch(() => {});
 
+// ─── Instagram Cookies Support ───────────────────────────────────────────────
+const IG_COOKIES_PATH = '/tmp/ig-cookies.txt';
+function ensureInstagramCookies(): string[] {
+  const cookiesEnv = process.env.INSTAGRAM_COOKIES || process.env.COOKIES_TXT;
+  if (!cookiesEnv) return [];
+  try {
+    if (!fs.existsSync(IG_COOKIES_PATH) || fs.statSync(IG_COOKIES_PATH).size === 0) {
+      let content = cookiesEnv;
+      if (!content.includes('\n')) {
+        content = content.split('\\n').join('\n');
+      }
+      fs.writeFileSync(IG_COOKIES_PATH, content, 'utf-8');
+    }
+    return ['--cookies', IG_COOKIES_PATH];
+  } catch {
+    return [];
+  }
+}
+
+// ─── SnapSave Decoder ────────────────────────────────────────────────────────
+interface SnapSaveItem {
+  url: string;
+  thumb: string | null;
+  isVideo: boolean;
+}
+
+function decodeSnapApp(args: string[]): string {
+  let [h, u, n, t, e, r] = args;
+  const tNum = Number(t);
+  const eNum = Number(e);
+  function decode(d: string, e: number, f: number) {
+    const g = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ+/'.split('');
+    const hArr = g.slice(0, e);
+    const iArr = g.slice(0, f);
+    let j = d.split('').reverse().reduce((a, b, c) => {
+      const idx = hArr.indexOf(b);
+      if (idx !== -1) return a + idx * Math.pow(e, c);
+      return a;
+    }, 0);
+    let k = '';
+    while (j > 0) {
+      k = iArr[j % f] + k;
+      j = Math.floor(j / f);
+    }
+    return k || '0';
+  }
+  let result = '';
+  for (let i = 0, len = h.length; i < len;) {
+    let s = '';
+    while (i < len && h[i] !== n[eNum]) {
+      s += h[i];
+      i++;
+    }
+    i++;
+    for (let j = 0; j < n.length; j++) s = s.replace(new RegExp(n[j], 'g'), j.toString());
+    result += String.fromCharCode(Number(decode(s, eNum, 10)) - tNum);
+  }
+  return decodeURIComponent(escape(result));
+}
+
+function decryptSnapSave(data: string): string {
+  try {
+    const parts = data.split('decodeURIComponent(escape(r))}(')[1]?.split('))')[0]?.split(',').map((v) => v.replace(/"/g, '').trim());
+    if (!parts || parts.length < 6) return '';
+    const decoded = decodeSnapApp(parts);
+    const downloadHtml = decoded.split('getElementById("download-section").innerHTML = "')[1]?.split('"; document.getElementById("inputData").remove(); ')[0]?.replace(/\\(\\)?/g, '');
+    return downloadHtml || '';
+  } catch {
+    return '';
+  }
+}
+
+async function extractFromSnapSave(targetUrl: string): Promise<SnapSaveItem[]> {
+  try {
+    const formData = new URLSearchParams();
+    formData.append('url', targetUrl);
+    const res = await fetch('https://snapsave.app/action.php?lang=en', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+        'origin': 'https://snapsave.app',
+        'referer': 'https://snapsave.app/',
+        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36',
+      },
+      body: formData,
+    });
+
+    if (!res.ok) return [];
+    const text = await res.text();
+    const html = decryptSnapSave(text);
+    if (!html) return [];
+
+    const items: SnapSaveItem[] = [];
+    const itemRegex = /<div class="download-items"[\s\S]*?<div class="download-items__thumb"[^>]*>[\s\S]*?<img[^>]+src="([^"]+)"[\s\S]*?<div class="download-items__btn"[^>]*>[\s\S]*?<a[^>]+href="([^"]+)"[\s\S]*?<\/div>/g;
+    let match;
+    while ((match = itemRegex.exec(html)) !== null) {
+      const thumb = match[1];
+      const url = match[2];
+      const isVideo = /icon-dlvideo|download video/i.test(match[0]);
+      if (url && url !== '/' && url.startsWith('http')) {
+        items.push({ url, thumb, isVideo });
+      }
+    }
+    return items;
+  } catch {
+    return [];
+  }
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function detectPlatformFromUrl(rawUrl: string): string {
@@ -145,16 +255,20 @@ app.get('/api/health', (req, res) => {
 
 // 1. /api/info - Universal 7-in-1 Fast Metadata Extraction
 app.get('/api/info', async (req, res) => {
-  const targetUrl = (req.query.url as string) || '';
+  let targetUrl = (req.query.url as string) || '';
   if (!targetUrl.trim()) {
     return res.status(400).json({ success: false, error: 'URL parameter is required.' });
   }
 
+  // Strip tracking parameters (?utm_source=..., ?igsh=...)
+  targetUrl = targetUrl.trim();
+  const cleanUrlWithoutParams = targetUrl.split('?')[0];
+
   const platform = detectPlatformFromUrl(targetUrl);
 
-  // High-Speed YouTube Handler (OEmbed + Direct Thumbnail + Clean Aspect Ratio)
+  // ── YouTube Handler (OEmbed + Direct Thumbnail + Clean Aspect Ratio) ────────
   if (platform === 'youtube') {
-    const ytData = parseYouTubeId(targetUrl);
+    const ytData = parseYouTubeId(cleanUrlWithoutParams);
     if (!ytData) {
       return res.status(400).json({ success: false, error: 'Invalid YouTube video or Shorts link.' });
     }
@@ -178,7 +292,6 @@ app.get('/api/info', async (req, res) => {
     } catch {}
 
     const maxResThumbnail = `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`;
-    const hqThumbnail = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
 
     const downloads = [
       {
@@ -245,10 +358,10 @@ app.get('/api/info', async (req, res) => {
     });
   }
 
-  // Fast TikTok Handler (TikWM + OEmbed)
+  // ── TikTok Handler (TikWM + OEmbed) ─────────────────────────────────────────
   if (platform === 'tiktok') {
     try {
-      const tikRes = await fetch(`https://www.tikwm.com/api/?url=${encodeURIComponent(targetUrl)}&hd=1`, {
+      const tikRes = await fetch(`https://www.tikwm.com/api/?url=${encodeURIComponent(cleanUrlWithoutParams)}&hd=1`, {
         headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36' },
       });
       if (tikRes.ok) {
@@ -321,7 +434,120 @@ app.get('/api/info', async (req, res) => {
     } catch {}
   }
 
-  // Fast Twitter / X Handler
+  // ── Instagram Handler (Multi-Scraper Pipeline) ──────────────────────────────
+  if (platform === 'instagram') {
+    const reelMatch = targetUrl.match(/instagram\.com\/(?:reel|reels|share\/reel)\/([a-zA-Z0-9_-]+)/i);
+    const postMatch = targetUrl.match(/instagram\.com\/(?:p|tv)\/([a-zA-Z0-9_-]+)/i);
+    const mediaId = reelMatch ? reelMatch[1] : (postMatch ? postMatch[1] : '');
+    const isReel = !!reelMatch;
+    const cleanReelUrl = isReel ? `https://www.instagram.com/reel/${mediaId}/` : `https://www.instagram.com/p/${mediaId}/`;
+
+    // 1. Try SnapSave Scraper
+    const snapItems = await extractFromSnapSave(cleanReelUrl).catch(() => [] as SnapSaveItem[]);
+    const primarySnap = snapItems.length > 0 ? snapItems[0] : null;
+
+    // 2. Try yt-dlp with cookies if available
+    let mediaInfo: any = null;
+    try {
+      const ytdlpBin = await ensureYtDlp();
+      const cookieArgs = ensureInstagramCookies();
+      const args = [
+        '--dump-json',
+        '--no-playlist',
+        '--no-warnings',
+        '--add-header', 'User-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        '--add-header', 'Referer:https://www.instagram.com/',
+        ...cookieArgs,
+        cleanReelUrl,
+      ];
+      const { stdout } = await execFileAsync(ytdlpBin, args, { timeout: 15000 });
+      if (stdout && stdout.trim()) {
+        mediaInfo = JSON.parse(stdout.trim());
+      }
+    } catch {}
+
+    // Check if we retrieved any video stream
+    const directVideoUrl = primarySnap?.url || mediaInfo?.url || (Array.isArray(mediaInfo?.formats) ? mediaInfo.formats.find((f: any) => f.url && f.ext === 'mp4')?.url : undefined);
+    const coverUrl = primarySnap?.thumb || mediaInfo?.thumbnail || `https://www.instagram.com/p/${mediaId}/media/?size=l`;
+    const title = mediaInfo?.description || mediaInfo?.title || (isReel ? 'Instagram Reel' : 'Instagram Video');
+    const authorName = mediaInfo?.uploader || mediaInfo?.channel || 'Instagram Creator';
+
+    if (!directVideoUrl && !mediaInfo) {
+      return res.status(400).json({
+        success: false,
+        error: 'This Instagram Reel requires login, is private, or has audience restrictions set by the creator. Please check that the Reel is accessible publicly.',
+      });
+    }
+
+    const downloads = [
+      {
+        id: 'cf_ig_1080p',
+        label: '1080p Full HD (Recommended)',
+        quality: '1080',
+        description: 'Original high-definition MP4 video with audio',
+        badge: '1080p FULL HD',
+        type: 'video',
+        url: cleanReelUrl,
+        directUrl: directVideoUrl,
+        extension: 'mp4',
+        isOriginal: true,
+      },
+      {
+        id: 'cf_ig_720p',
+        label: '720p Fast HD',
+        quality: '720',
+        description: 'Fast download optimized for mobile sharing',
+        badge: '720p HD',
+        type: 'video',
+        url: cleanReelUrl,
+        directUrl: directVideoUrl,
+        extension: 'mp4',
+      },
+      {
+        id: 'cf_ig_audio',
+        label: '320kbps MP3 Audio',
+        quality: '320k',
+        description: 'Extracted background music or voice track',
+        badge: 'MP3 AUDIO',
+        type: 'audio',
+        url: cleanReelUrl,
+        directUrl: directVideoUrl,
+        extension: 'mp3',
+      },
+      {
+        id: 'cf_ig_cover',
+        label: 'HD Cover Artwork',
+        quality: 'thumb',
+        description: 'Full resolution cover image in JPG',
+        badge: 'THUMBNAIL',
+        type: 'thumbnail',
+        url: coverUrl,
+        directUrl: coverUrl,
+        extension: 'jpg',
+      },
+    ];
+
+    return res.json({
+      success: true,
+      data: {
+        id: mediaId,
+        platform: 'instagram',
+        originalUrl: targetUrl,
+        title: title.length > 80 ? title.substring(0, 80) + '...' : title,
+        authorName,
+        authorUsername: authorName.replace(/[^\w]/g, '').toLowerCase(),
+        coverUrl,
+        duration: mediaInfo?.duration || 15,
+        durationFormatted: isReel ? 'Reel' : 'Video',
+        aspect_ratio: isReel ? '9:16' : '16:9',
+        width: isReel ? 1080 : 1920,
+        height: isReel ? 1920 : 1080,
+        downloads,
+      },
+    });
+  }
+
+  // ── Twitter / X Handler ─────────────────────────────────────────────────────
   if (platform === 'twitter') {
     const tweetMatch = targetUrl.match(/(?:twitter\.com|x\.com)\/(?:[a-zA-Z0-9_]+)\/status\/([0-9]+)/);
     const tweetId = tweetMatch ? tweetMatch[1] : 'tweet';
@@ -329,7 +555,7 @@ app.get('/api/info', async (req, res) => {
     let title = 'X / Twitter Video';
     let authorName = 'X Creator';
     try {
-      const oembedRes = await fetch(`https://publish.twitter.com/oembed?url=${encodeURIComponent(targetUrl)}`);
+      const oembedRes = await fetch(`https://publish.twitter.com/oembed?url=${encodeURIComponent(cleanUrlWithoutParams)}`);
       if (oembedRes.ok) {
         const data = await oembedRes.json();
         if (data.author_name) authorName = data.author_name;
@@ -377,7 +603,7 @@ app.get('/api/info', async (req, res) => {
     });
   }
 
-  // Universal Fallback via yt-dlp
+  // ── Universal Fallback via yt-dlp ───────────────────────────────────────────
   try {
     const ytdlpBin = await ensureYtDlp();
     const args = [
@@ -385,12 +611,12 @@ app.get('/api/info', async (req, res) => {
       '--no-playlist',
       '--no-warnings',
       '--add-header', 'User-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-      targetUrl,
+      cleanUrlWithoutParams,
     ];
 
     const { stdout } = await execFileAsync(ytdlpBin, args, { timeout: 20000 });
     if (!stdout || !stdout.trim()) {
-      throw new Error('Empty response from media extractor.');
+      throw new Error('This video could not be fetched. The post may be private, restricted, or removed.');
     }
 
     const info = JSON.parse(stdout.trim());
@@ -452,9 +678,9 @@ app.get('/api/info', async (req, res) => {
     });
   } catch (err: any) {
     console.error('[ClipFlux /api/info Error]', err);
-    return res.status(500).json({
+    return res.status(400).json({
       success: false,
-      error: err.message || 'Failed to fetch media from link. Please verify the URL.',
+      error: err.message || 'Could not fetch media. Please check that the URL is public and valid.',
     });
   }
 });
@@ -475,7 +701,7 @@ app.get('/api/download', async (req, res) => {
 
     res.setHeader('Content-Disposition', `attachment; filename="${customFilename}"`);
 
-    if (format === 'cf_audio_mp3') {
+    if (format.includes('audio')) {
       res.setHeader('Content-Type', 'audio/mpeg');
       const dlProc = spawn(ytdlpBin, [
         '-o', '-',
