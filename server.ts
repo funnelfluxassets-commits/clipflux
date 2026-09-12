@@ -963,22 +963,59 @@ app.get('/api/download', async (req, res) => {
     const ytdlpArgs = [
       ...extraArgs,
       ...ffmpegArgs,
-      '-o', tmpFile,
+      '-o', `${tmpFile}.%(ext)s`,
       '--no-cache-dir',
       '--no-playlist',
       ytUrl,
     ];
 
-    await execFileAsync(ytdlpBin, ytdlpArgs, { timeout: 60000 });
+    try {
+      const { stdout, stderr } = await execFileAsync(ytdlpBin, ytdlpArgs, { timeout: 55000 });
+      console.log('[yt-dlp video success]', stdout?.slice(-200));
+      if (stderr) console.warn('[yt-dlp video stderr]', stderr?.slice(-200));
+    } catch (execErr: any) {
+      console.error('[yt-dlp exec error]', execErr);
+      const detail = execErr?.stderr || execErr?.message || 'Video processing failed';
+      return res.status(500).json({ success: false, error: `Video download processing failed: ${detail.slice(0, 250)}` });
+    }
 
     let actualFile = tmpFile;
-    if (!fs.existsSync(actualFile)) {
-      if (fs.existsSync(`${tmpFile}.mp4`)) actualFile = `${tmpFile}.mp4`;
-      else if (fs.existsSync(path.join('/tmp', `${tempId}.mp4`))) actualFile = path.join('/tmp', `${tempId}.mp4`);
+    const candidates = [
+      `${tmpFile}.mp4`,
+      `${tmpFile}.mkv`,
+      `${tmpFile}.webm`,
+      tmpFile,
+      path.join('/tmp', `${tempId}.mp4`),
+      path.join('/tmp', `${tempId}.mkv`),
+      path.join('/tmp', `${tempId}.webm`),
+      path.join('/tmp', tempId),
+    ];
+
+    for (const cand of candidates) {
+      if (fs.existsSync(cand) && fs.statSync(cand).size > 0) {
+        actualFile = cand;
+        break;
+      }
     }
 
     if (!fs.existsSync(actualFile) || fs.statSync(actualFile).size === 0) {
-      throw new Error('Failed to generate video file.');
+      try {
+        const matches = fs.readdirSync('/tmp').filter((f) => f.includes(tempId));
+        if (matches.length > 0) {
+          const matchPath = path.join('/tmp', matches[0]);
+          if (fs.existsSync(matchPath) && fs.statSync(matchPath).size > 0) {
+            actualFile = matchPath;
+          }
+        }
+      } catch {}
+    }
+
+    if (!fs.existsSync(actualFile) || fs.statSync(actualFile).size === 0) {
+      const existingInTmp = fs.readdirSync('/tmp').slice(0, 15);
+      return res.status(500).json({
+        success: false,
+        error: `Failed to find generated video file in /tmp. Available: ${JSON.stringify(existingInTmp)}`,
+      });
     }
 
     const stat = fs.statSync(actualFile);
@@ -993,6 +1030,8 @@ app.get('/api/download', async (req, res) => {
         if (fs.existsSync(actualFile)) fs.unlinkSync(actualFile);
         if (fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile);
         if (fs.existsSync(`${tmpFile}.mp4`)) fs.unlinkSync(`${tmpFile}.mp4`);
+        if (fs.existsSync(`${tmpFile}.mkv`)) fs.unlinkSync(`${tmpFile}.mkv`);
+        if (fs.existsSync(`${tmpFile}.webm`)) fs.unlinkSync(`${tmpFile}.webm`);
       } catch {}
     };
     res.on('finish', cleanup);
