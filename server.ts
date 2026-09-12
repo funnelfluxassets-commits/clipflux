@@ -419,8 +419,8 @@ app.get('*', (req, res) => {
   return res.sendFile(path.join(serverDir, 'index.html'));
 });
 
-// Start Server if run directly
-if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+// Start Server if not on Vercel
+if (!process.env.VERCEL) {
   app.listen(PORT, () => {
     console.log(`\n⚡ ClipFlux Server running at http://localhost:${PORT}`);
     console.log(`✨ Mode: Universal 7-in-1 Downloader & Clean Topic Scraper Active\n`);
