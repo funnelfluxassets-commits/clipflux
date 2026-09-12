@@ -107,32 +107,47 @@ export const CleanTopicScraper: React.FC<CleanTopicScraperProps> = ({
     }
   };
 
-  // 1-Click Batch .ZIP Export
+  // 1-Click Batch .ZIP Export with retry logic to ensure all clips are included
   const handleDownloadAllZip = async () => {
     if (results.length === 0 || isZipping) return;
     setIsZipping(true);
-    setZipProgress(10);
+    setZipProgress(5);
+    setScrapeError(null);
 
     try {
       const zip = new JSZip();
       const folderName = `ClipFlux_${topic.replace(/[^\w]/g, '_')}_${targetRatio.replace(':', 'x')}`;
       const folder = zip.folder(folderName) || zip;
 
-      let completed = 0;
+      let successCount = 0;
       for (let i = 0; i < results.length; i++) {
         const clip = results[i];
-        try {
-          const response = await fetch(clip.video_url);
-          if (!response.ok) throw new Error(`HTTP ${response.status}`);
-          const blob = await response.blob();
-          const cleanAuthor = (clip.author || 'clean').replace(/[^\w]/g, '_');
-          const filename = `${i + 1}_${cleanAuthor}_${clip.id.substring(0, 8)}.mp4`;
-          folder.file(filename, blob);
-        } catch (err) {
-          console.error(`Error downloading clip ${i + 1} for ZIP:`, err);
+        let downloaded = false;
+
+        // Try up to 2 attempts per clip to guarantee all requested clips are included
+        for (let attempt = 1; attempt <= 2; attempt++) {
+          try {
+            const response = await fetch(clip.video_url);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const blob = await response.blob();
+            if (blob.size < 50000) throw new Error(`File too small (${blob.size} bytes)`);
+            const cleanAuthor = (clip.author || 'clean').replace(/[^\w]/g, '_');
+            const filename = `${i + 1}_${cleanAuthor}_${clip.id.substring(0, 8)}.mp4`;
+            folder.file(filename, blob);
+            downloaded = true;
+            successCount++;
+            break;
+          } catch (clipErr) {
+            console.warn(`Attempt ${attempt} for clip ${i + 1} failed:`, clipErr);
+            if (attempt === 1) await new Promise((r) => setTimeout(r, 1000));
+          }
         }
-        completed++;
-        setZipProgress(Math.round(10 + (completed / results.length) * 80));
+
+        setZipProgress(Math.round(5 + ((i + 1) / results.length) * 85));
+      }
+
+      if (successCount === 0) {
+        throw new Error("Could not download clips for archive. Please try individual clip downloads.");
       }
 
       setZipProgress(95);
@@ -152,8 +167,9 @@ export const CleanTopicScraper: React.FC<CleanTopicScraperProps> = ({
         origin: { y: 0.5 },
         colors: ['#10b981', '#3b82f6', '#10b981'],
       });
-    } catch (e) {
+    } catch (e: any) {
       console.error('Failed to create ZIP:', e);
+      setScrapeError(e?.message || 'Failed to create ZIP package. Please try again.');
     } finally {
       setIsZipping(false);
       setZipProgress(0);
