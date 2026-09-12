@@ -44,9 +44,11 @@ export const CleanTopicScraper: React.FC<CleanTopicScraperProps> = ({
   const [selectedPlatforms, setSelectedPlatforms] = useState<SupportedPlatform[]>([
     'youtube',
     'tiktok',
+    'instagram',
     'pinterest',
     'reddit'
   ]);
+  const [scrapeError, setScrapeError] = useState<string | null>(null);
 
   const togglePlatform = (p: SupportedPlatform) => {
     if (selectedPlatforms.includes(p)) {
@@ -60,19 +62,23 @@ export const CleanTopicScraper: React.FC<CleanTopicScraperProps> = ({
 
   const handleStartScrape = async () => {
     if (!topic.trim() || isScraping) return;
+    setScrapeError(null);
     try {
       const clips = await onScrape(topic.trim(), targetRatio, clipCount, selectedPlatforms);
-      setResults(clips);
-      if (clips.length > 0) {
-        confetti({
-          particleCount: 80,
-          spread: 70,
-          origin: { y: 0.6 },
-          colors: ['#10b981', '#34d399', '#059669', '#6ee7b7'],
-        });
+      if (!clips || clips.length === 0) {
+        setScrapeError("No clean viral clips found for this topic. Try broader search terms (e.g. backflip, parkour, gym fails).");
+        return;
       }
-    } catch (err) {
+      setResults(clips);
+      confetti({
+        particleCount: 80,
+        spread: 70,
+        origin: { y: 0.6 },
+        colors: ['#10b981', '#34d399', '#059669', '#6ee7b7'],
+      });
+    } catch (err: any) {
       console.error('Scraping error:', err);
+      setScrapeError(err?.message || "Failed to complete search. Please try again.");
     }
   };
 
@@ -247,7 +253,7 @@ export const CleanTopicScraper: React.FC<CleanTopicScraperProps> = ({
               Target Sources
             </label>
             <div className="flex flex-wrap gap-1.5">
-              {(['youtube', 'tiktok', 'pinterest', 'reddit'] as SupportedPlatform[]).map((p) => {
+              {(['youtube', 'tiktok', 'instagram', 'pinterest', 'reddit'] as SupportedPlatform[]).map((p) => {
                 const isChecked = selectedPlatforms.includes(p);
                 return (
                   <button
@@ -260,7 +266,7 @@ export const CleanTopicScraper: React.FC<CleanTopicScraperProps> = ({
                         : 'bg-zinc-100 dark:bg-zinc-950/50 border-zinc-200 dark:border-zinc-800 text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200'
                     }`}
                   >
-                    {p === 'youtube' ? 'YouTube Shorts' : p}
+                    {p === 'youtube' ? 'YouTube Shorts' : p === 'tiktok' ? 'TikTok' : p === 'instagram' ? 'Instagram' : p === 'pinterest' ? 'Pinterest' : p === 'reddit' ? 'Reddit' : p}
                   </button>
                 );
               })}
@@ -288,6 +294,14 @@ export const CleanTopicScraper: React.FC<CleanTopicScraperProps> = ({
             </>
           )}
         </button>
+
+        {/* Error Alert */}
+        {scrapeError && (
+          <div className="mt-4 p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-500 dark:text-rose-400 text-xs sm:text-sm font-medium flex items-center gap-2 animate-in fade-in">
+            <AlertCircle className="w-4 h-4 flex-shrink-0 text-rose-500" />
+            <span>{scrapeError}</span>
+          </div>
+        )}
 
         {/* Live Progress Bar during active scrape */}
         {isScraping && (
