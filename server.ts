@@ -841,8 +841,7 @@ app.get('/api/download', async (req, res) => {
         const videoId = shortsMatch?.[1] || watchMatch?.[1] || (targetUrl.length === 11 ? targetUrl : null);
         if (videoId) ytUrl = `https://www.youtube.com/watch?v=${videoId}`;
         extraArgs = [
-          '--extractor-args', 'youtube:player_client=visionos,web_safari,mweb;formats=missing_pot',
-          '--js-runtimes', 'node',
+          '--extractor-args', 'youtube:player_client=android,visionos;formats=missing_pot',
           ...ensureYouTubeCookiesFile(),
         ];
       } else {
@@ -851,12 +850,12 @@ app.get('/api/download', async (req, res) => {
 
       const ffmpegArgs = ffmpegBin === 'ffmpeg' ? [] : ['--ffmpeg-location', ffmpegBin];
       const ytdlpArgs = [
-        '-f', 'ba[protocol*=m3u8]/ba[ext=m4a]/ba/b/bestaudio/best',
+        '-f', 'ba/ba*/b/bestaudio/best',
         '-x',
         '--audio-format', 'mp3',
         '--audio-quality', '192K',
         ...ffmpegArgs,
-        '-o', tmpFile,
+        '-o', `${tmpFile}.%(ext)s`,
         '--no-cache-dir',
         '--no-playlist',
         ...extraArgs,
@@ -866,9 +865,19 @@ app.get('/api/download', async (req, res) => {
       await execFileAsync(ytdlpBin, ytdlpArgs, { timeout: 50000 });
 
       let actualFile = tmpFile;
-      if (!fs.existsSync(actualFile)) {
-        if (fs.existsSync(`${tmpFile}.mp3`)) actualFile = `${tmpFile}.mp3`;
-        else if (fs.existsSync(path.join('/tmp', `${tempId}.mp3`))) actualFile = path.join('/tmp', `${tempId}.mp3`);
+      const candidates = [
+        `${tmpFile}.mp3`,
+        `${tmpFile}.m4a`,
+        `${tmpFile}.webm`,
+        tmpFile,
+        path.join('/tmp', `${tempId}.mp3`),
+        path.join('/tmp', `${tempId}.m4a`),
+      ];
+      for (const cand of candidates) {
+        if (fs.existsSync(cand) && fs.statSync(cand).size > 0) {
+          actualFile = cand;
+          break;
+        }
       }
 
       if (!fs.existsSync(actualFile) || fs.statSync(actualFile).size === 0) {
@@ -937,12 +946,11 @@ app.get('/api/download', async (req, res) => {
 
       const qNum = format.includes('720') ? 720 : 1080;
       extraArgs = [
-        '-S', `res:${qNum},proto:m3u8,vcodec:h264,ext:mp4:m4a`,
-        '-f', 'bestvideo+bestaudio/best',
-        '--extractor-args', 'youtube:player_client=visionos,web_safari,mweb;formats=missing_pot',
+        '-S', `res:${qNum},ext:mp4:m4a`,
+        '-f', 'b/bv*+ba/best',
+        '--extractor-args', 'youtube:player_client=android,visionos;formats=missing_pot',
         '--merge-output-format', 'mp4',
         '--postprocessor-args', 'ffmpeg:-c:a aac -b:a 192k -movflags +faststart',
-        '--js-runtimes', 'node',
         ...ensureYouTubeCookiesFile(),
       ];
     } else {
