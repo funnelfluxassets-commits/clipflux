@@ -21,7 +21,7 @@ import { MediaResult, DownloadOption } from '../types';
 
 interface ResultCardProps {
   media: MediaResult;
-  onDownload: (option: DownloadOption, customFilename: string) => void;
+  onDownload: (option: DownloadOption, customFilename: string) => Promise<void> | void;
   downloadingId: string | null;
 }
 
@@ -244,11 +244,13 @@ export const ResultCard: React.FC<ResultCardProps> = ({
 
                   <button
                     type="button"
-                    onClick={(e) => {
+                    onClick={async (e) => {
                       e.stopPropagation();
-                      onDownload(option, customFilename);
-                      setDownloadSuccessId(option.id);
-                      setTimeout(() => setDownloadSuccessId(null), 3000);
+                      try {
+                        await onDownload(option, customFilename);
+                        setDownloadSuccessId(option.id);
+                        setTimeout(() => setDownloadSuccessId(null), 3000);
+                      } catch {}
                     }}
                     disabled={isDownloading}
                     className={`min-w-[84px] sm:min-w-[92px] h-9 sm:h-10 px-3.5 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center justify-center gap-1.5 cursor-pointer disabled:cursor-wait ${

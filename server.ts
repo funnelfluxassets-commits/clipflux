@@ -170,6 +170,43 @@ function ensureInstagramCookies(): string[] {
   }
 }
 
+// ─── YouTube Cookies & Cleanup Support ───────────────────────────────────────
+function cleanOldTmpFiles() {
+  try {
+    const files = fs.readdirSync('/tmp');
+    const now = Date.now();
+    for (const file of files) {
+      if (file.startsWith('dl_') || file.startsWith('audio_') || file.includes('.part')) {
+        const fullPath = path.join('/tmp', file);
+        try {
+          const stats = fs.statSync(fullPath);
+          if (now - stats.mtimeMs > 30000) {
+            fs.unlinkSync(fullPath);
+          }
+        } catch {}
+      }
+    }
+  } catch {}
+}
+
+const YT_COOKIES_PATH = '/tmp/yt-cookies.txt';
+function ensureYouTubeCookiesFile(): string[] {
+  const cookiesEnv = process.env.YOUTUBE_COOKIES || process.env.COOKIES_TXT;
+  if (!cookiesEnv) return [];
+  try {
+    if (!fs.existsSync(YT_COOKIES_PATH) || fs.statSync(YT_COOKIES_PATH).size === 0) {
+      let content = cookiesEnv;
+      if (!content.includes('\n')) {
+        content = content.split('\\n').join('\n');
+      }
+      fs.writeFileSync(YT_COOKIES_PATH, content, 'utf-8');
+    }
+    return ['--cookies', YT_COOKIES_PATH];
+  } catch {
+    return [];
+  }
+}
+
 // ─── SnapSave Decoder ────────────────────────────────────────────────────────
 interface SnapSaveItem {
   url: string;
@@ -724,26 +761,30 @@ app.get('/api/info', async (req, res) => {
 
 // 2. /api/download - Universal Streaming Media Proxy
 app.get('/api/download', async (req, res) => {
-  const targetUrl = req.query.url as string;
-  const streamUrl = req.query.streamUrl as string;
+  const targetUrl = (req.query.url as string) || '';
+  const streamUrl = (req.query.streamUrl as string) || '';
   const format = (req.query.format as string) || 'cf_1080p_fhd';
   const customFilename = (req.query.filename as string) || 'clipflux_media.mp4';
 
   if (!targetUrl && !streamUrl) {
-    return res.status(400).send('Missing target URL');
+    return res.status(400).json({ success: false, error: 'Missing target URL or stream URL.' });
   }
 
+  const safeFilename = customFilename.replace(/[<>:"/\\|?*\x00-\x1F]/g, '').trim() || 'clipflux_media';
+  const isAudio = format.includes('audio') || safeFilename.endsWith('.mp3');
+  const isYouTube = targetUrl.includes('youtube.com') || targetUrl.includes('youtu.be');
+
   try {
+    cleanOldTmpFiles();
     const ffmpegBin = await ensureFfmpeg();
 
-    res.setHeader('Content-Disposition', `attachment; filename="${customFilename}"`);
-
-    // Audio Conversion Request (MP3)
-    if (format.includes('audio') || customFilename.endsWith('.mp3')) {
+    // ── A. Audio Conversion Request (MP3) ──────────────────────────────────────
+    if (isAudio) {
+      res.setHeader('Content-Disposition', `attachment; filename="${safeFilename.endsWith('.mp3') ? safeFilename : `${safeFilename}.mp3`}"`);
       res.setHeader('Content-Type', 'audio/mpeg');
 
-      // If we have a direct media stream URL (e.g. from Instagram, Twitter, etc.), convert directly to MP3 with ffmpeg!
-      if (streamUrl && streamUrl.startsWith('http')) {
+      // 1. If we have a direct media stream URL (e.g. from Instagram, TikTok, etc.), convert directly to MP3 with ffmpeg!
+      if (streamUrl && streamUrl.startsWith('http') && !isYouTube) {
         try {
           const tempId = `audio_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
           const tmpMp4 = path.join('/tmp', `${tempId}.mp4`);
@@ -752,7 +793,7 @@ app.get('/api/download', async (req, res) => {
           const cdnRes = await fetch(streamUrl, {
             headers: {
               'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-              'Referer': 'https://www.instagram.com/',
+              'Referer': targetUrl.includes('instagram.com') ? 'https://www.instagram.com/' : 'https://www.tiktok.com/',
             },
           });
 
@@ -793,41 +834,173 @@ app.get('/api/download', async (req, res) => {
         }
       }
 
-      // Fallback: yt-dlp extraction with ffmpeg
+      // 2. YouTube or other platform audio extraction via yt-dlp
       const ytdlpBin = await ensureYtDlp();
-      const cookieArgs = ensureInstagramCookies();
-      const dlProc = spawn(ytdlpBin, [
-        '-o', '-',
+      const tempId = `audio_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const tmpFile = path.join('/tmp', tempId);
+
+      let ytUrl = targetUrl;
+      let extraArgs: string[] = [];
+
+      if (isYouTube) {
+        const shortsMatch = targetUrl.match(/(?:youtube\.com|youtu\.be)\/shorts\/([a-zA-Z0-9_-]{11})/);
+        const watchMatch = targetUrl.match(/(?:youtube\.com\/(?:watch\?.*v=|embed\/|v\/|live\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+        const videoId = shortsMatch?.[1] || watchMatch?.[1] || (targetUrl.length === 11 ? targetUrl : null);
+        if (videoId) ytUrl = `https://www.youtube.com/watch?v=${videoId}`;
+        extraArgs = [
+          '--extractor-args', 'youtube:player_client=visionos,web_safari,mweb;formats=missing_pot',
+          '--js-runtimes', 'node',
+          ...ensureYouTubeCookiesFile(),
+        ];
+      } else {
+        extraArgs = ensureInstagramCookies();
+      }
+
+      const ffmpegArgs = ffmpegBin === 'ffmpeg' ? [] : ['--ffmpeg-location', ffmpegBin];
+      const ytdlpArgs = [
+        '-f', 'ba[protocol*=m3u8]/ba[ext=m4a]/ba/b/bestaudio/best',
         '-x',
         '--audio-format', 'mp3',
-        '--audio-quality', '0',
-        '--ffmpeg-location', ffmpegBin,
-        ...cookieArgs,
-        targetUrl,
-      ]);
-      dlProc.stdout.pipe(res);
-      dlProc.stderr.on('data', () => {});
-      req.on('close', () => dlProc.kill());
+        '--audio-quality', '192K',
+        ...ffmpegArgs,
+        '-o', tmpFile,
+        '--no-cache-dir',
+        '--no-playlist',
+        ...extraArgs,
+        ytUrl,
+      ];
+
+      await execFileAsync(ytdlpBin, ytdlpArgs, { timeout: 50000 });
+
+      let actualFile = tmpFile;
+      if (!fs.existsSync(actualFile)) {
+        if (fs.existsSync(`${tmpFile}.mp3`)) actualFile = `${tmpFile}.mp3`;
+        else if (fs.existsSync(path.join('/tmp', `${tempId}.mp3`))) actualFile = path.join('/tmp', `${tempId}.mp3`);
+      }
+
+      if (!fs.existsSync(actualFile) || fs.statSync(actualFile).size === 0) {
+        throw new Error('Failed to extract audio track.');
+      }
+
+      const stat = fs.statSync(actualFile);
+      res.setHeader('Content-Length', String(stat.size));
+      res.setHeader('Cache-Control', 'no-cache');
+
+      const readStream = fs.createReadStream(actualFile);
+      readStream.pipe(res);
+
+      const cleanup = () => {
+        try {
+          if (fs.existsSync(actualFile)) fs.unlinkSync(actualFile);
+          if (fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile);
+          if (fs.existsSync(`${tmpFile}.mp3`)) fs.unlinkSync(`${tmpFile}.mp3`);
+        } catch {}
+      };
+      res.on('finish', cleanup);
+      res.on('close', cleanup);
       return;
     }
 
-    // Video stream request
-    const ytdlpBin = await ensureYtDlp();
-    const ffmpegBinPath = await ensureFfmpeg();
+    // ── B. Video Stream / Download Request ─────────────────────────────────────
+    res.setHeader('Content-Disposition', `attachment; filename="${safeFilename.endsWith('.mp4') ? safeFilename : `${safeFilename}.mp4`}"`);
     res.setHeader('Content-Type', 'video/mp4');
-    const dlProc = spawn(ytdlpBin, [
-      '-o', '-',
-      '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
-      '--ffmpeg-location', ffmpegBinPath,
-      targetUrl,
-    ]);
-    dlProc.stdout.pipe(res);
-    dlProc.stderr.on('data', () => {});
-    req.on('close', () => dlProc.kill());
+
+    // 1. Direct streamUrl CDN proxy (Instagram, TikTok, Twitter, etc.)
+    if (streamUrl && streamUrl.startsWith('http') && !isYouTube) {
+      try {
+        const cdnRes = await fetch(streamUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+          },
+        });
+        if (cdnRes.ok && cdnRes.body) {
+          const contentLength = cdnRes.headers.get('content-length');
+          if (contentLength) res.setHeader('Content-Length', contentLength);
+          res.setHeader('Cache-Control', 'no-cache');
+
+          const { Readable } = await import('stream');
+          // @ts-ignore
+          Readable.fromWeb(cdnRes.body).pipe(res);
+          return;
+        }
+      } catch (cdnErr) {
+        console.warn('[CDN direct proxy failed, falling back to yt-dlp]', cdnErr);
+      }
+    }
+
+    // 2. YouTube or other platform video muxing via yt-dlp + ffmpeg
+    const ytdlpBin = await ensureYtDlp();
+    const tempId = `dl_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const tmpFile = path.join('/tmp', tempId);
+
+    let ytUrl = targetUrl;
+    let extraArgs: string[] = [];
+
+    if (isYouTube) {
+      const shortsMatch = targetUrl.match(/(?:youtube\.com|youtu\.be)\/shorts\/([a-zA-Z0-9_-]{11})/);
+      const watchMatch = targetUrl.match(/(?:youtube\.com\/(?:watch\?.*v=|embed\/|v\/|live\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+      const videoId = shortsMatch?.[1] || watchMatch?.[1] || (targetUrl.length === 11 ? targetUrl : null);
+      if (videoId) ytUrl = `https://www.youtube.com/watch?v=${videoId}`;
+
+      const qNum = format.includes('720') ? 720 : 1080;
+      extraArgs = [
+        '-S', `res:${qNum},proto:m3u8,vcodec:h264,ext:mp4:m4a`,
+        '-f', 'bestvideo+bestaudio/best',
+        '--extractor-args', 'youtube:player_client=visionos,web_safari,mweb;formats=missing_pot',
+        '--merge-output-format', 'mp4',
+        '--postprocessor-args', 'ffmpeg:-c:a aac -b:a 192k -movflags +faststart',
+        '--js-runtimes', 'node',
+        ...ensureYouTubeCookiesFile(),
+      ];
+    } else {
+      extraArgs = [
+        '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+        ...ensureInstagramCookies(),
+      ];
+    }
+
+    const ffmpegArgs = ffmpegBin === 'ffmpeg' ? [] : ['--ffmpeg-location', ffmpegBin];
+    const ytdlpArgs = [
+      ...extraArgs,
+      ...ffmpegArgs,
+      '-o', tmpFile,
+      '--no-cache-dir',
+      '--no-playlist',
+      ytUrl,
+    ];
+
+    await execFileAsync(ytdlpBin, ytdlpArgs, { timeout: 60000 });
+
+    let actualFile = tmpFile;
+    if (!fs.existsSync(actualFile)) {
+      if (fs.existsSync(`${tmpFile}.mp4`)) actualFile = `${tmpFile}.mp4`;
+      else if (fs.existsSync(path.join('/tmp', `${tempId}.mp4`))) actualFile = path.join('/tmp', `${tempId}.mp4`);
+    }
+
+    if (!fs.existsSync(actualFile) || fs.statSync(actualFile).size === 0) {
+      throw new Error('Failed to generate video file.');
+    }
+
+    const stat = fs.statSync(actualFile);
+    res.setHeader('Content-Length', String(stat.size));
+    res.setHeader('Cache-Control', 'no-cache');
+
+    const readStream = fs.createReadStream(actualFile);
+    readStream.pipe(res);
+
+    const cleanup = () => {
+      try {
+        if (fs.existsSync(actualFile)) fs.unlinkSync(actualFile);
+        if (fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile);
+        if (fs.existsSync(`${tmpFile}.mp4`)) fs.unlinkSync(`${tmpFile}.mp4`);
+      } catch {}
+    };
+    res.on('finish', cleanup);
+    res.on('close', cleanup);
   } catch (e: any) {
     console.error('[Download error]', e);
     if (!res.headersSent) {
-      res.status(500).send('Download failed: ' + e.message);
+      res.status(500).json({ success: false, error: e.message || 'Download processing failed' });
     }
   }
 });

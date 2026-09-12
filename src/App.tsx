@@ -133,6 +133,7 @@ export const App: React.FC = () => {
 
   const handleDownload = async (option: DownloadOption, customFilename: string) => {
     setDownloadingId(option.id);
+    setFetchError(null);
     try {
       const filename = `${customFilename}.${option.extension}`;
 
@@ -160,14 +161,32 @@ export const App: React.FC = () => {
         }
       }
 
-      // Stream download or MP3 conversion via server endpoint
+      // Stream download or MP3 conversion via server endpoint using in-browser fetch (Zero white-screen navigation)
       const streamParam = option.directUrl ? `&streamUrl=${encodeURIComponent(option.directUrl)}` : '';
       const downloadEndpoint = `/api/download?url=${encodeURIComponent(mediaResult?.originalUrl || '')}${streamParam}&format=${option.id}&filename=${encodeURIComponent(filename)}`;
-      window.location.href = downloadEndpoint;
-    } catch (e) {
-      console.error(e);
+
+      const response = await fetch(downloadEndpoint);
+      if (!response.ok) {
+        const errorJson = await response.json().catch(() => null);
+        const msg = errorJson?.error || `Download failed (HTTP ${response.status})`;
+        throw new Error(msg);
+      }
+
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const tempLink = document.createElement('a');
+      tempLink.href = blobUrl;
+      tempLink.download = filename;
+      document.body.appendChild(tempLink);
+      tempLink.click();
+      document.body.removeChild(tempLink);
+      setTimeout(() => window.URL.revokeObjectURL(blobUrl), 4000);
+    } catch (e: any) {
+      console.error('Download error:', e);
+      setFetchError(e?.message || 'Download could not complete. Please try another quality option.');
+      throw e;
     } finally {
-      setTimeout(() => setDownloadingId(null), 2000);
+      setDownloadingId(null);
     }
   };
 
