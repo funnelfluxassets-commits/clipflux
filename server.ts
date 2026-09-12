@@ -1,7 +1,6 @@
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
-import { fileURLToPath } from 'url';
 import https from 'https';
 import http from 'http';
 import { execFile, spawn } from 'child_process';
@@ -110,6 +109,10 @@ async function ensureFfmpeg(): Promise<string> {
   return 'ffmpeg';
 }
 
+// Background pre-warm
+ensureYtDlp().catch(() => {});
+ensureFfmpeg().catch(() => {});
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function detectPlatformFromUrl(rawUrl: string): string {
@@ -124,11 +127,13 @@ function detectPlatformFromUrl(rawUrl: string): string {
   return 'unknown';
 }
 
-function formatDuration(seconds?: number): string {
-  if (!seconds || seconds <= 0) return '';
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${s < 10 ? '0' : ''}${s}`;
+function parseYouTubeId(url: string): { id: string; isShorts: boolean } | null {
+  const shorts = url.match(/(?:youtube\.com|youtu\.be)\/shorts\/([a-zA-Z0-9_-]{11})/);
+  if (shorts) return { id: shorts[1], isShorts: true };
+  const watch = url.match(/(?:youtube\.com\/(?:watch\?.*v=|embed\/|v\/|live\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+  if (watch) return { id: watch[1], isShorts: false };
+  if (/^[a-zA-Z0-9_-]{11}$/.test(url.trim())) return { id: url.trim(), isShorts: false };
+  return null;
 }
 
 // ─── API Routes ──────────────────────────────────────────────────────────────
@@ -138,14 +143,241 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', engine: 'ClipFlux', version: '1.0.0' });
 });
 
-// 1. /api/info - Universal 7-in-1 Metadata Extraction
+// 1. /api/info - Universal 7-in-1 Fast Metadata Extraction
 app.get('/api/info', async (req, res) => {
-  const targetUrl = req.query.url as string;
-  if (!targetUrl || !targetUrl.trim()) {
+  const targetUrl = (req.query.url as string) || '';
+  if (!targetUrl.trim()) {
     return res.status(400).json({ success: false, error: 'URL parameter is required.' });
   }
 
   const platform = detectPlatformFromUrl(targetUrl);
+
+  // High-Speed YouTube Handler (OEmbed + Direct Thumbnail + Clean Aspect Ratio)
+  if (platform === 'youtube') {
+    const ytData = parseYouTubeId(targetUrl);
+    if (!ytData) {
+      return res.status(400).json({ success: false, error: 'Invalid YouTube video or Shorts link.' });
+    }
+
+    const { id: videoId, isShorts } = ytData;
+    let title = isShorts ? 'YouTube Shorts Video' : 'YouTube HD Video';
+    let authorName = 'YouTube Creator';
+    let authorUrl = 'https://www.youtube.com';
+
+    try {
+      const oembedRes = await fetch(
+        `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`,
+        { headers: { 'User-Agent': 'Mozilla/5.0' } }
+      );
+      if (oembedRes.ok) {
+        const oembed = await oembedRes.json();
+        if (oembed.title) title = oembed.title;
+        if (oembed.author_name) authorName = oembed.author_name;
+        if (oembed.author_url) authorUrl = oembed.author_url;
+      }
+    } catch {}
+
+    const maxResThumbnail = `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`;
+    const hqThumbnail = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+
+    const downloads = [
+      {
+        id: 'cf_1080p_fhd',
+        label: '1080p Full HD (Recommended)',
+        quality: '1080',
+        description: 'Crystal-clear 1080p Full HD MP4 with crisp audio',
+        badge: '1080p FULL HD',
+        type: 'video',
+        url: targetUrl,
+        extension: 'mp4',
+        isOriginal: true,
+      },
+      {
+        id: 'cf_720p_hd',
+        label: '720p Fast HD',
+        quality: '720',
+        description: 'Standard HD MP4, optimized for fast mobile downloads',
+        badge: '720p HD',
+        type: 'video',
+        url: targetUrl,
+        extension: 'mp4',
+      },
+      {
+        id: 'cf_audio_mp3',
+        label: '320kbps MP3 Audio',
+        quality: '320k',
+        description: 'Clean extracted master soundtrack in MP3',
+        badge: 'MP3 AUDIO',
+        type: 'audio',
+        url: targetUrl,
+        extension: 'mp3',
+      },
+      {
+        id: 'cf_cover_thumb',
+        label: 'HD Thumbnail Cover',
+        quality: 'HD',
+        description: 'Full-resolution video artwork image in JPG',
+        badge: 'THUMBNAIL',
+        type: 'thumbnail',
+        url: maxResThumbnail,
+        directUrl: maxResThumbnail,
+        extension: 'jpg',
+      },
+    ];
+
+    return res.json({
+      success: true,
+      data: {
+        id: videoId,
+        platform: 'youtube',
+        originalUrl: targetUrl,
+        title,
+        authorName,
+        authorUsername: authorName.replace(/[^\w]/g, '').toLowerCase(),
+        coverUrl: maxResThumbnail,
+        duration: isShorts ? 30 : 180,
+        durationFormatted: isShorts ? 'Shorts' : 'HD Video',
+        aspect_ratio: isShorts ? '9:16' : '16:9',
+        width: isShorts ? 1080 : 1920,
+        height: isShorts ? 1920 : 1080,
+        downloads,
+      },
+    });
+  }
+
+  // Fast TikTok Handler (TikWM + OEmbed)
+  if (platform === 'tiktok') {
+    try {
+      const tikRes = await fetch(`https://www.tikwm.com/api/?url=${encodeURIComponent(targetUrl)}&hd=1`, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36' },
+      });
+      if (tikRes.ok) {
+        const json = await tikRes.json();
+        if (json && json.data) {
+          const data = json.data;
+          const playUrl = data.hdplay || data.play || '';
+          const musicUrl = data.music || '';
+          const cover = data.cover || '';
+          const title = data.title || 'TikTok Video';
+          const author = data.author?.nickname || 'TikTok Creator';
+
+          const downloads = [
+            {
+              id: 'cf_tiktok_hd',
+              label: '1080p HD (No Watermark)',
+              quality: '1080',
+              description: 'Crisp video without TikTok watermark',
+              badge: '1080p NO WATERMARK',
+              type: 'video',
+              url: targetUrl,
+              directUrl: playUrl.startsWith('http') ? playUrl : `https://www.tikwm.com${playUrl}`,
+              extension: 'mp4',
+              isOriginal: true,
+            },
+            {
+              id: 'cf_tiktok_audio',
+              label: 'Original Sound MP3',
+              quality: 'audio',
+              description: 'Extracted audio track',
+              badge: 'MP3 AUDIO',
+              type: 'audio',
+              url: targetUrl,
+              directUrl: musicUrl,
+              extension: 'mp3',
+            },
+            {
+              id: 'cf_tiktok_cover',
+              label: 'Cover Thumbnail',
+              quality: 'thumb',
+              description: 'High resolution cover',
+              badge: 'THUMBNAIL',
+              type: 'thumbnail',
+              url: cover,
+              directUrl: cover,
+              extension: 'jpg',
+            },
+          ];
+
+          return res.json({
+            success: true,
+            data: {
+              id: data.id || 'tiktok',
+              platform: 'tiktok',
+              originalUrl: targetUrl,
+              title,
+              authorName: author,
+              authorUsername: data.author?.unique_id || '',
+              coverUrl: cover,
+              duration: data.duration || 15,
+              durationFormatted: `${data.duration || 15}s`,
+              aspect_ratio: '9:16',
+              width: 1080,
+              height: 1920,
+              downloads,
+            },
+          });
+        }
+      }
+    } catch {}
+  }
+
+  // Fast Twitter / X Handler
+  if (platform === 'twitter') {
+    const tweetMatch = targetUrl.match(/(?:twitter\.com|x\.com)\/(?:[a-zA-Z0-9_]+)\/status\/([0-9]+)/);
+    const tweetId = tweetMatch ? tweetMatch[1] : 'tweet';
+
+    let title = 'X / Twitter Video';
+    let authorName = 'X Creator';
+    try {
+      const oembedRes = await fetch(`https://publish.twitter.com/oembed?url=${encodeURIComponent(targetUrl)}`);
+      if (oembedRes.ok) {
+        const data = await oembedRes.json();
+        if (data.author_name) authorName = data.author_name;
+      }
+    } catch {}
+
+    const downloads = [
+      {
+        id: 'cf_twitter_fhd',
+        label: '1080p Full HD (Recommended)',
+        quality: '1080',
+        description: 'Original high-definition MP4 video with audio',
+        badge: '1080p FULL HD',
+        type: 'video',
+        url: targetUrl,
+        extension: 'mp4',
+        isOriginal: true,
+      },
+      {
+        id: 'cf_twitter_audio',
+        label: '320kbps MP3 Audio',
+        quality: '320k',
+        description: 'Extracted audio track',
+        badge: 'MP3 AUDIO',
+        type: 'audio',
+        url: targetUrl,
+        extension: 'mp3',
+      },
+    ];
+
+    return res.json({
+      success: true,
+      data: {
+        id: tweetId,
+        platform: 'twitter',
+        originalUrl: targetUrl,
+        title,
+        authorName,
+        coverUrl: `https://vxtwitter.com/render/${tweetId}.jpg`,
+        aspect_ratio: '16:9',
+        width: 1920,
+        height: 1080,
+        downloads,
+      },
+    });
+  }
+
+  // Universal Fallback via yt-dlp
   try {
     const ytdlpBin = await ensureYtDlp();
     const args = [
@@ -156,79 +388,30 @@ app.get('/api/info', async (req, res) => {
       targetUrl,
     ];
 
-    const { stdout } = await execFileAsync(ytdlpBin, args, { timeout: 25000 });
+    const { stdout } = await execFileAsync(ytdlpBin, args, { timeout: 20000 });
+    if (!stdout || !stdout.trim()) {
+      throw new Error('Empty response from media extractor.');
+    }
+
     const info = JSON.parse(stdout.trim());
-
-    const width = info.width || 0;
-    const height = info.height || 0;
-
-    let aspect_ratio: '9:16' | '16:9' | '1:1' | 'unknown' = 'unknown';
-    if (width > 0 && height > 0) {
-      if (height / width >= 1.25) {
-        aspect_ratio = '9:16';
-      } else if (width / height >= 1.25) {
-        aspect_ratio = '16:9';
-      } else {
-        aspect_ratio = '1:1';
-      }
-    } else if (targetUrl.includes('/shorts/') || targetUrl.includes('/reel/') || targetUrl.includes('tiktok.com')) {
-      aspect_ratio = '9:16';
-    } else {
-      aspect_ratio = '16:9';
-    }
-
-    // Extract best direct CDN URLs if available
-    let directFhdUrl = '';
-    let directHdUrl = '';
-    if (Array.isArray(info.formats)) {
-      const mp4s = info.formats.filter((f: any) => f.url && (f.ext === 'mp4' || f.vcodec !== 'none'));
-      mp4s.sort((a: any, b: any) => {
-        const dimA = Math.max(a.height || 0, a.width || 0);
-        const dimB = Math.max(b.height || 0, b.width || 0);
-        return dimB - dimA;
-      });
-
-      if (mp4s.length > 0) {
-        directFhdUrl = mp4s[0].url;
-        const hd = mp4s.find((f: any) => Math.min(f.height || 0, f.width || 0) <= 720) || mp4s[mp4s.length - 1];
-        directHdUrl = hd ? hd.url : directFhdUrl;
-      }
-    } else if (info.url) {
-      directFhdUrl = info.url;
-      directHdUrl = info.url;
-    }
-
-    // YouTube requires server-side streaming mux
-    const isYouTube = platform === 'youtube';
-    const finalFhdUrl = isYouTube ? '' : directFhdUrl;
-    const finalHdUrl = isYouTube ? '' : directHdUrl;
+    const width = info.width || 1920;
+    const height = info.height || 1080;
+    const aspect_ratio = (height / width >= 1.25) ? '9:16' : '16:9';
 
     const downloads = [
       {
-        id: 'cf_1080p_fhd',
+        id: 'cf_universal_fhd',
         label: '1080p Full HD (Recommended)',
         quality: '1080',
-        description: 'Original high-definition MP4 video with crisp audio',
+        description: 'Original high-definition MP4 video with audio',
         badge: '1080p FULL HD',
         type: 'video',
         url: targetUrl,
-        directUrl: finalFhdUrl || undefined,
         extension: 'mp4',
         isOriginal: true,
       },
       {
-        id: 'cf_720p_hd',
-        label: '720p Fast HD',
-        quality: '720',
-        description: 'High quality MP4, optimized for fast mobile downloads',
-        badge: '720p HD',
-        type: 'video',
-        url: targetUrl,
-        directUrl: finalHdUrl || undefined,
-        extension: 'mp4',
-      },
-      {
-        id: 'cf_audio_mp3',
+        id: 'cf_universal_audio',
         label: '320kbps MP3 Audio',
         quality: '320k',
         description: 'Clean extracted master audio track',
@@ -238,10 +421,10 @@ app.get('/api/info', async (req, res) => {
         extension: 'mp3',
       },
       {
-        id: 'cf_cover_thumb',
+        id: 'cf_universal_thumb',
         label: 'HD Thumbnail Cover',
         quality: 'HD',
-        description: 'High-resolution original thumbnail JPG image',
+        description: 'High-resolution artwork JPG image',
         badge: 'THUMBNAIL',
         type: 'thumbnail',
         url: info.thumbnail || '',
@@ -253,15 +436,14 @@ app.get('/api/info', async (req, res) => {
     return res.json({
       success: true,
       data: {
-        id: info.id || 'clip',
+        id: info.id || 'media',
         platform,
         originalUrl: targetUrl,
-        title: info.title || 'Viral Video',
+        title: info.title || 'Viral Media',
         authorName: info.uploader || info.channel || 'Creator',
         authorUsername: info.uploader_id || '',
         coverUrl: info.thumbnail || '',
         duration: info.duration || 0,
-        durationFormatted: formatDuration(info.duration),
         aspect_ratio,
         width,
         height,
@@ -272,7 +454,7 @@ app.get('/api/info', async (req, res) => {
     console.error('[ClipFlux /api/info Error]', err);
     return res.status(500).json({
       success: false,
-      error: err.message || 'Failed to fetch media from link. Please check that the URL is public and valid.',
+      error: err.message || 'Failed to fetch media from link. Please verify the URL.',
     });
   }
 });
@@ -331,12 +513,10 @@ app.get('/api/scrape', async (req, res) => {
   const topic = (req.query.topic as string) || 'oddly satisfying';
   const targetRatio = (req.query.target_ratio as string) || '9:16';
   const count = parseInt(req.query.count as string, 10) || 5;
-  const platforms = (req.query.platforms as string) || 'youtube,tiktok,pinterest,reddit';
 
   try {
     const ytdlpBin = await ensureYtDlp();
     
-    // Search query construction
     let searchQuery = topic;
     if (targetRatio === '9:16' && !topic.toLowerCase().includes('shorts')) {
       searchQuery = `${topic} #shorts`;
@@ -363,7 +543,6 @@ app.get('/api/scrape', async (req, res) => {
         const author = item.uploader || item.channel || 'Creator';
         const duration = item.duration || 15;
 
-        // Skip obvious compilations if looking for short-form
         if (targetRatio === '9:16' && duration > 90) continue;
 
         const videoUrl = item.url || `https://www.youtube.com/watch?v=${id}`;
