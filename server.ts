@@ -72,31 +72,24 @@ async function ensureYtDlp(): Promise<string> {
     if (fs.existsSync(YTDLP_TMP_PATH)) {
       try {
         fs.chmodSync(YTDLP_TMP_PATH, 0o755);
-        await execFileAsync(YTDLP_TMP_PATH, ['--version'], { timeout: 4000 });
+        await execFileAsync(YTDLP_TMP_PATH, ['--version'], { timeout: 5000 });
         ytdlpReadyPath = YTDLP_TMP_PATH;
         return YTDLP_TMP_PATH;
-      } catch {}
+      } catch {
+        try { fs.unlinkSync(YTDLP_TMP_PATH); } catch {}
+      }
     }
 
-    console.log('[yt-dlp] Downloading Linux binary to /tmp...');
+    console.log('[yt-dlp] Downloading Linux binary to /tmp via fetch follow...');
     const url = 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux';
-    await new Promise<void>((resolve, reject) => {
-      const file = fs.createWriteStream(YTDLP_TMP_PATH, { mode: 0o755 });
-      const request = https.get(url, (res) => {
-        if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-          https.get(res.headers.location, (redirRes) => {
-            redirRes.pipe(file);
-            file.on('finish', () => file.close(() => resolve()));
-          }).on('error', reject);
-          return;
-        }
-        res.pipe(file);
-        file.on('finish', () => file.close(() => resolve()));
-      });
-      request.on('error', reject);
-    });
-
+    const res = await fetch(url, { redirect: 'follow' });
+    if (!res.ok) throw new Error(`HTTP ${res.status} downloading yt-dlp`);
+    const buffer = Buffer.from(await res.arrayBuffer());
+    fs.writeFileSync(YTDLP_TMP_PATH, buffer);
     fs.chmodSync(YTDLP_TMP_PATH, 0o755);
+
+    const { stdout: version } = await execFileAsync(YTDLP_TMP_PATH, ['--version'], { timeout: 15000 });
+    console.log('[yt-dlp] Downloaded & verified:', version.trim());
     ytdlpReadyPath = YTDLP_TMP_PATH;
     return YTDLP_TMP_PATH;
   })();
