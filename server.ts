@@ -1017,6 +1017,8 @@ app.get('/api/download', async (req, res) => {
   }
 
   const safeFilename = customFilename.replace(/[<>:"/\\|?*\x00-\x1F]/g, '').trim() || 'clipflux_media';
+  const asciiFilename = safeFilename.replace(/[^\x20-\x7E]/g, '').replace(/["\\]/g, '').trim() || 'clipflux_media';
+  const encodedFilename = encodeURIComponent(safeFilename);
   const isAudio = format.includes('audio') || safeFilename.endsWith('.mp3');
   const isYouTube = targetUrl.includes('youtube.com') || targetUrl.includes('youtu.be');
 
@@ -1026,7 +1028,8 @@ app.get('/api/download', async (req, res) => {
 
     // ── A. Audio Conversion Request (MP3) ──────────────────────────────────────
     if (isAudio) {
-      res.setHeader('Content-Disposition', `attachment; filename="${safeFilename.endsWith('.mp3') ? safeFilename : `${safeFilename}.mp3`}"`);
+      const ext = safeFilename.endsWith('.mp3') ? '' : '.mp3';
+      res.setHeader('Content-Disposition', `attachment; filename="${asciiFilename}${ext}"; filename*=UTF-8''${encodedFilename}${ext}`);
       res.setHeader('Content-Type', 'audio/mpeg');
 
       // 1. If we have a direct media stream URL (e.g. from Instagram, TikTok, etc.), convert directly to MP3 with ffmpeg!
@@ -1179,7 +1182,8 @@ app.get('/api/download', async (req, res) => {
     }
 
     // ── B. Video Stream / Download Request ─────────────────────────────────────
-    res.setHeader('Content-Disposition', `attachment; filename="${safeFilename.endsWith('.mp4') ? safeFilename : `${safeFilename}.mp4`}"`);
+    const vExt = safeFilename.endsWith('.mp4') ? '' : '.mp4';
+    res.setHeader('Content-Disposition', `attachment; filename="${asciiFilename}${vExt}"; filename*=UTF-8''${encodedFilename}${vExt}`);
     res.setHeader('Content-Type', 'video/mp4');
 
     // 1. Direct streamUrl CDN proxy (Instagram, TikTok, Twitter, etc.)
@@ -1348,11 +1352,12 @@ app.get('/api/download', async (req, res) => {
   }
 });
 
-// Direct high-speed YouTube / Shorts search extractor
+// Direct high-speed YouTube / Shorts search extractor with overlay / ranking filters
 async function scrapeYouTubeSearchDirect(topic: string, targetRatio: string, count: number) {
+  // Use negative keywords to avoid countdowns, ranking lists, and heavy overlays
   const searchQuery = targetRatio === '9:16' && !topic.toLowerCase().includes('shorts')
-    ? `${topic} shorts`
-    : topic;
+    ? `${topic} shorts raw footage -ranking -countdown`
+    : `${topic} raw footage -ranking -countdown`;
   const encoded = encodeURIComponent(searchQuery);
   const searchUrl = `https://www.youtube.com/results?search_query=${encoded}`;
 
@@ -1377,6 +1382,15 @@ async function scrapeYouTubeSearchDirect(topic: string, targetRatio: string, cou
   const cleanVideos: any[] = [];
   const seenIds = new Set<string>();
 
+  // Filter out noisy / overlay titles
+  const overlayBlacklist = [
+    'ranking', 'rank', 'top 10', 'top 5', 'top 3', 'top 20', 'top 7',
+    'countdown', 'compilation', 'reaction', 'reacts', 'reacting',
+    'duet', 'stitch', 'tier list', 'worst to best', 'try not to laugh',
+    'review', 'interview', 'podcast', 'commentary', 'with subtitles',
+    'lineup'
+  ];
+
   for (const section of contents) {
     const items = section.itemSectionRenderer?.contents || [];
     for (const item of items) {
@@ -1387,11 +1401,20 @@ async function scrapeYouTubeSearchDirect(topic: string, targetRatio: string, cou
           if (!s) continue;
           const videoId = s.entityId?.replace('shorts-shelf-item-', '') || s.onTap?.innertubeCommand?.reelWatchEndpoint?.videoId;
           if (!videoId || seenIds.has(videoId)) continue;
-          seenIds.add(videoId);
 
           const title = s.overlayMetadata?.primaryText?.content || s.accessibilityText?.split(',')[0] || 'Clean Viral Short';
+          const lowerTitle = title.toLowerCase();
+
+          // Gatekeeper: reject overlay / ranking titles
+          if (overlayBlacklist.some(term => lowerTitle.includes(term))) {
+            continue;
+          }
+
+          seenIds.add(videoId);
+
           const rawUrl = `https://www.youtube.com/shorts/${videoId}`;
-          const cleanDlUrl = `/api/download?url=${encodeURIComponent(rawUrl)}&quality=cf_720p_hd&filename=${encodeURIComponent(title)}`;
+          const safeFilename = title.replace(/[#&?%<>:"/\\|*\x00-\x1F]/g, '').trim().substring(0, 60) || 'clean_viral_clip';
+          const cleanDlUrl = `/api/download?url=${encodeURIComponent(rawUrl)}&quality=cf_720p_hd&filename=${encodeURIComponent(safeFilename)}.mp4`;
 
           cleanVideos.push({
             id: videoId,
@@ -1422,6 +1445,13 @@ async function scrapeYouTubeSearchDirect(topic: string, targetRatio: string, cou
         if (!videoId || seenIds.has(videoId)) continue;
 
         const title = v.title?.runs?.[0]?.text || 'Clean Viral Video';
+        const lowerTitle = title.toLowerCase();
+
+        // Gatekeeper: reject overlay / ranking titles
+        if (overlayBlacklist.some(term => lowerTitle.includes(term))) {
+          continue;
+        }
+
         const author = v.ownerText?.runs?.[0]?.text || 'Creator';
         const durationText = v.lengthText?.simpleText || '';
         const isShort = durationText.startsWith('0:') && parseInt(durationText.split(':')[1]) <= 60;
@@ -1432,7 +1462,8 @@ async function scrapeYouTubeSearchDirect(topic: string, targetRatio: string, cou
         seenIds.add(videoId);
 
         const rawUrl = isShort ? `https://www.youtube.com/shorts/${videoId}` : `https://www.youtube.com/watch?v=${videoId}`;
-        const cleanDlUrl = `/api/download?url=${encodeURIComponent(rawUrl)}&quality=cf_720p_hd&filename=${encodeURIComponent(title)}`;
+        const safeFilename = title.replace(/[#&?%<>:"/\\|*\x00-\x1F]/g, '').trim().substring(0, 60) || 'clean_viral_clip';
+        const cleanDlUrl = `/api/download?url=${encodeURIComponent(rawUrl)}&quality=cf_720p_hd&filename=${encodeURIComponent(safeFilename)}.mp4`;
 
         cleanVideos.push({
           id: videoId,

@@ -39,6 +39,31 @@ export const CleanTopicScraper: React.FC<CleanTopicScraperProps> = ({
   const [results, setResults] = useState<ScrapedClip[]>([]);
   const [isZipping, setIsZipping] = useState(false);
   const [zipProgress, setZipProgress] = useState(0);
+  const [downloadingClipId, setDownloadingClipId] = useState<string | null>(null);
+
+  const handleDownloadSingleClip = async (clip: ScrapedClip) => {
+    if (downloadingClipId) return;
+    setDownloadingClipId(clip.id);
+    try {
+      const res = await fetch(clip.video_url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      const cleanAuthor = (clip.author || 'clean').replace(/[^\w]/g, '_');
+      a.download = `clean_${cleanAuthor}_${clip.id.substring(0, 8)}.mp4`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 4000);
+    } catch (e) {
+      console.error('Download error:', e);
+      window.location.href = clip.video_url;
+    } finally {
+      setDownloadingClipId(null);
+    }
+  };
 
   // Platform selection
   const [selectedPlatforms, setSelectedPlatforms] = useState<SupportedPlatform[]>([
@@ -97,14 +122,14 @@ export const CleanTopicScraper: React.FC<CleanTopicScraperProps> = ({
       for (let i = 0; i < results.length; i++) {
         const clip = results[i];
         try {
-          // Fetch video blob
           const response = await fetch(clip.video_url);
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
           const blob = await response.blob();
-          const filename = `${i + 1}_${clip.author || 'clean'}_${clip.id.substring(0, 8)}.mp4`;
+          const cleanAuthor = (clip.author || 'clean').replace(/[^\w]/g, '_');
+          const filename = `${i + 1}_${cleanAuthor}_${clip.id.substring(0, 8)}.mp4`;
           folder.file(filename, blob);
-        } catch {
-          // If direct fetch fails due to CORS, provide a text link in the archive
-          folder.file(`clip_${i + 1}_link.txt`, `Direct URL: ${clip.video_url}\nOriginal: ${clip.url}`);
+        } catch (err) {
+          console.error(`Error downloading clip ${i + 1} for ZIP:`, err);
         }
         completed++;
         setZipProgress(Math.round(10 + (completed / results.length) * 80));
@@ -411,16 +436,24 @@ export const CleanTopicScraper: React.FC<CleanTopicScraperProps> = ({
 
                   {/* Actions */}
                   <div className="mt-3 pt-3 border-t border-zinc-100 dark:border-zinc-800/80 flex items-center gap-2">
-                    <a
-                      href={clip.video_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      download={`clean_${clip.id}.mp4`}
-                      className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-white font-bold text-xs shadow-md shadow-emerald-500/20 transition-all active:scale-95 cursor-pointer"
+                    <button
+                      type="button"
+                      onClick={() => handleDownloadSingleClip(clip)}
+                      disabled={downloadingClipId === clip.id}
+                      className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-white font-bold text-xs shadow-md shadow-emerald-500/20 transition-all active:scale-95 cursor-pointer"
                     >
-                      <Download className="w-3.5 h-3.5" />
-                      <span>Download Clean MP4</span>
-                    </a>
+                      {downloadingClipId === clip.id ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>Downloading MP4...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Download className="w-3.5 h-3.5" />
+                          <span>Download Clean MP4</span>
+                        </>
+                      )}
+                    </button>
                   </div>
                 </div>
 
