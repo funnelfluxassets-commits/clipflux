@@ -109,15 +109,16 @@ export const App: React.FC = () => {
     }
   }, [url]);
 
-  const handleFetchMedia = async (targetUrl: string) => {
-    if (!targetUrl.trim()) return;
+  const handleFetchMedia = async (targetUrl?: string) => {
+    const target = (typeof targetUrl === 'string' && targetUrl.trim()) ? targetUrl.trim() : url.trim();
+    if (!target) return;
 
     setIsFetchingInfo(true);
     setFetchError(null);
     setMediaResult(null);
 
     try {
-      const res = await fetch(`/api/info?url=${encodeURIComponent(targetUrl.trim())}`);
+      const res = await fetch(`/api/info?url=${encodeURIComponent(target)}`);
       const data = await res.json();
 
       if (!res.ok || !data.success) {

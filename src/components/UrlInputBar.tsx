@@ -57,7 +57,7 @@ export const UrlInputBar: React.FC<UrlInputBarProps> = ({
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && !isLoading && url.trim()) {
-      onSubmit();
+      onSubmit(url.trim());
     }
   };
 
@@ -116,7 +116,7 @@ export const UrlInputBar: React.FC<UrlInputBarProps> = ({
 
             <button
               type="button"
-              onClick={() => onSubmit()}
+              onClick={() => onSubmit(url.trim())}
               disabled={isLoading || !url.trim()}
               className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-xs sm:text-sm bg-emerald-500 hover:bg-emerald-400 text-white shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/50 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-emerald-500 transition-all active:scale-95 cursor-pointer"
             >
