@@ -117,12 +117,7 @@ export const App: React.FC = () => {
     setMediaResult(null);
 
     try {
-      const res = await fetch('/api/extract', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: targetUrl.trim() }),
-      });
-
+      const res = await fetch(`/api/info?url=${encodeURIComponent(targetUrl.trim())}`);
       const data = await res.json();
 
       if (!res.ok || !data.success) {
