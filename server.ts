@@ -839,7 +839,26 @@ app.get('/api/download', async (req, res) => {
         const shortsMatch = targetUrl.match(/(?:youtube\.com|youtu\.be)\/shorts\/([a-zA-Z0-9_-]{11})/);
         const watchMatch = targetUrl.match(/(?:youtube\.com\/(?:watch\?.*v=|embed\/|v\/|live\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
         const videoId = shortsMatch?.[1] || watchMatch?.[1] || (targetUrl.length === 11 ? targetUrl : null);
-        if (videoId) ytUrl = `https://www.youtube.com/watch?v=${videoId}`;
+        
+        if (videoId) {
+          try {
+            const tubeUrl = `https://youtube-video-downloader.funnelfluxassets.com/api/proxy-download?id=${videoId}&quality=audio&type=audio&filename=${encodeURIComponent(safeFilename)}&ext=mp3`;
+            const tubeRes = await fetch(tubeUrl);
+            if (tubeRes.ok && tubeRes.body) {
+              const cl = tubeRes.headers.get('content-length');
+              if (cl) res.setHeader('Content-Length', cl);
+              res.setHeader('Content-Type', 'audio/mpeg');
+              res.setHeader('Cache-Control', 'no-cache');
+              const { Readable } = await import('stream');
+              // @ts-ignore
+              Readable.fromWeb(tubeRes.body).pipe(res);
+              return;
+            }
+          } catch (tubeErr) {
+            console.warn('[TubeDownloader audio proxy fallback to local yt-dlp]', tubeErr);
+          }
+          ytUrl = `https://www.youtube.com/watch?v=${videoId}`;
+        }
         extraArgs = [
           '-f', 'ba/b/bestaudio/best',
           '--extractor-args', 'youtube:player_client=web_embedded,web_creator;formats=missing_pot',
@@ -945,7 +964,27 @@ app.get('/api/download', async (req, res) => {
       const shortsMatch = targetUrl.match(/(?:youtube\.com|youtu\.be)\/shorts\/([a-zA-Z0-9_-]{11})/);
       const watchMatch = targetUrl.match(/(?:youtube\.com\/(?:watch\?.*v=|embed\/|v\/|live\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
       const videoId = shortsMatch?.[1] || watchMatch?.[1] || (targetUrl.length === 11 ? targetUrl : null);
-      if (videoId) ytUrl = `https://www.youtube.com/watch?v=${videoId}`;
+
+      if (videoId) {
+        try {
+          const qNum = format.includes('720') ? '720' : '1080';
+          const tubeUrl = `https://youtube-video-downloader.funnelfluxassets.com/api/proxy-download?id=${videoId}&quality=${qNum}&type=video&filename=${encodeURIComponent(safeFilename)}&ext=mp4`;
+          const tubeRes = await fetch(tubeUrl);
+          if (tubeRes.ok && tubeRes.body) {
+            const cl = tubeRes.headers.get('content-length');
+            if (cl) res.setHeader('Content-Length', cl);
+            res.setHeader('Content-Type', 'video/mp4');
+            res.setHeader('Cache-Control', 'no-cache');
+            const { Readable } = await import('stream');
+            // @ts-ignore
+            Readable.fromWeb(tubeRes.body).pipe(res);
+            return;
+          }
+        } catch (tubeErr) {
+          console.warn('[TubeDownloader video proxy fallback to local yt-dlp]', tubeErr);
+        }
+        ytUrl = `https://www.youtube.com/watch?v=${videoId}`;
+      }
 
       const qNum = format.includes('720') ? 720 : 1080;
       extraArgs = [
