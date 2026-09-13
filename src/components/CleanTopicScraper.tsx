@@ -440,8 +440,16 @@ export const CleanTopicScraper: React.FC<CleanTopicScraperProps> = ({
                 {/* Body */}
                 <div className="p-4 flex-1 flex flex-col justify-between">
                   <div>
-                    <div className="flex items-center gap-1.5 mb-1 text-[11px] font-semibold text-zinc-500 dark:text-zinc-400 capitalize">
-                      <span className="text-emerald-500 font-bold">{clip.platform}</span>
+                    <div className="flex items-center gap-1.5 mb-1.5 text-[11px] font-semibold text-zinc-500 dark:text-zinc-400">
+                      <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider ${
+                        clip.platform === 'instagram' ? 'bg-gradient-to-r from-purple-500/15 via-pink-500/15 to-amber-500/15 border border-pink-500/30 text-pink-500 dark:text-pink-400' :
+                        clip.platform === 'tiktok' ? 'bg-cyan-500/15 border border-cyan-500/30 text-cyan-500 dark:text-cyan-400' :
+                        clip.platform === 'pinterest' ? 'bg-rose-500/15 border border-rose-500/30 text-rose-500 dark:text-rose-400' :
+                        clip.platform === 'reddit' ? 'bg-orange-500/15 border border-orange-500/30 text-orange-500 dark:text-orange-400' :
+                        'bg-emerald-500/15 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
+                      }`}>
+                        {clip.platform}
+                      </span>
                       <span>•</span>
                       <span className="truncate max-w-[140px]">{clip.author}</span>
                     </div>
