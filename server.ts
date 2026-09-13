@@ -1524,8 +1524,8 @@ async function searchRawClipsEngine(
         }
       }
 
-      // 2. Standard video cards: ONLY accept when targetRatio is 16:9 Wide
-      if (item.videoRenderer && (targetRatio === '16:9' || targetRatio === 'unknown')) {
+      // 2. Video cards (Includes Shorts when search results are filtered by date)
+      if (item.videoRenderer) {
         const v = item.videoRenderer;
         const videoId = v.videoId;
         if (!videoId || seenIds.has(videoId)) continue;
@@ -1533,10 +1533,21 @@ async function searchRawClipsEngine(
         const title = v.title?.runs?.[0]?.text || 'Clean Viral Video';
         if (!isClipStrictlyClean(title)) continue;
 
+        const durationText = v.lengthText?.simpleText || '';
+        // Check if this video is a 9:16 vertical Short:
+        // Duration <= 60 seconds (e.g. 0:04, 0:30, 1:00) or has reelWatchEndpoint
+        const isShortDuration = durationText.startsWith('0:') || durationText === '1:00';
+        const isReel = !!v.navigationEndpoint?.reelWatchEndpoint;
+        const isShort = isShortDuration || isReel;
+
+        // Aspect ratio matching
+        if (targetRatio === '9:16' && !isShort) continue;
+        if (targetRatio === '16:9' && isShort) continue;
+
         seenIds.add(videoId);
 
         const author = v.ownerText?.runs?.[0]?.text || authorTag;
-        const rawUrl = `https://www.youtube.com/watch?v=${videoId}`;
+        const rawUrl = isShort ? `https://www.youtube.com/shorts/${videoId}` : `https://www.youtube.com/watch?v=${videoId}`;
         const safeFilename = title.replace(/[#&?%<>:"/\\|*\x00-\x1F]/g, '').trim().substring(0, 60) || 'clean_raw_clip';
         const cleanDlUrl = `/api/download?url=${encodeURIComponent(rawUrl)}&quality=cf_720p_hd&filename=${encodeURIComponent(safeFilename)}.mp4`;
         const directUrl = `https://youtube-video-downloader.funnelfluxassets.com/api/proxy-download?id=${videoId}&quality=720&type=video&filename=video_${videoId}.mp4&ext=mp4`;
@@ -1551,10 +1562,10 @@ async function searchRawClipsEngine(
           video_url: cleanDlUrl,
           direct_url: directUrl,
           thumbnail: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
-          duration: 45,
-          width: 1920,
-          height: 1080,
-          aspect_ratio: '16:9',
+          duration: isShort ? 30 : 45,
+          width: isShort ? 1080 : 1920,
+          height: isShort ? 1920 : 1080,
+          aspect_ratio: isShort ? '9:16' : '16:9',
           is_clean: true,
           clean_score: 98,
           clean_reason: 'Passed AI Clean-Frame Gatekeeper: 0 text/subtitles/overlays',
