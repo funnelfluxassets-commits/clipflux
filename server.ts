@@ -1591,50 +1591,83 @@ async function scrapeMultiPlatformClips(
   const allClips: any[] = [];
   const coreTopic = cleanSearchTopic(topic);
 
+  const isFresh = freshness === 'week' || freshness === 'month';
+
   // Define search queries and metadata for each supported platform
   const platformConfigs: Record<string, { queries: string[]; platform: string; author: string }> = {
     instagram: {
-      queries: [
-        targetRatio === '9:16' ? `${coreTopic} raw footage reels` : `${coreTopic} aesthetic reels`,
-        targetRatio === '9:16' ? `${coreTopic} gopro pov reels` : `${coreTopic} raw footage 4k`,
-        targetRatio === '9:16' ? `${coreTopic} broll vertical reels` : `${coreTopic} cinematic broll`,
-      ],
+      queries: isFresh
+        ? [
+            targetRatio === '9:16' ? `${coreTopic} reels` : `${coreTopic} footage`,
+            targetRatio === '9:16' ? `${coreTopic} raw` : `${coreTopic} broll`,
+            targetRatio === '9:16' ? `${coreTopic} pov` : `${coreTopic} cinematic`,
+          ]
+        : [
+            targetRatio === '9:16' ? `${coreTopic} raw footage reels` : `${coreTopic} aesthetic reels`,
+            targetRatio === '9:16' ? `${coreTopic} gopro pov reels` : `${coreTopic} raw footage 4k`,
+            targetRatio === '9:16' ? `${coreTopic} broll vertical reels` : `${coreTopic} cinematic broll`,
+          ],
       platform: 'instagram',
       author: 'Instagram Creator',
     },
     tiktok: {
-      queries: [
-        targetRatio === '9:16' ? `${coreTopic} raw footage tiktok` : `${coreTopic} aesthetic raw`,
-        targetRatio === '9:16' ? `${coreTopic} broll aesthetic tiktok` : `${coreTopic} 4k broll`,
-        targetRatio === '9:16' ? `${coreTopic} action pov tiktok` : `${coreTopic} cinematic footage`,
-      ],
+      queries: isFresh
+        ? [
+            targetRatio === '9:16' ? `${coreTopic} tiktok` : `${coreTopic} raw`,
+            targetRatio === '9:16' ? `${coreTopic} raw` : `${coreTopic} 4k`,
+            targetRatio === '9:16' ? `${coreTopic} pov` : `${coreTopic} footage`,
+          ]
+        : [
+            targetRatio === '9:16' ? `${coreTopic} raw footage tiktok` : `${coreTopic} aesthetic raw`,
+            targetRatio === '9:16' ? `${coreTopic} broll aesthetic tiktok` : `${coreTopic} 4k broll`,
+            targetRatio === '9:16' ? `${coreTopic} action pov tiktok` : `${coreTopic} cinematic footage`,
+          ],
       platform: 'tiktok',
       author: 'TikTok Creator',
     },
     pinterest: {
-      queries: [
-        targetRatio === '9:16' ? `${coreTopic} aesthetic broll vertical` : `${coreTopic} aesthetic broll`,
-        targetRatio === '9:16' ? `${coreTopic} visual raw 4k` : `${coreTopic} cinematic visual`,
-        targetRatio === '9:16' ? `${coreTopic} cinematic vertical` : `${coreTopic} raw nature`,
-      ],
+      queries: isFresh
+        ? [
+            targetRatio === '9:16' ? `${coreTopic} vertical` : `${coreTopic} broll`,
+            targetRatio === '9:16' ? `${coreTopic} raw` : `${coreTopic} cinematic`,
+            targetRatio === '9:16' ? `${coreTopic} visual` : `${coreTopic} footage`,
+          ]
+        : [
+            targetRatio === '9:16' ? `${coreTopic} aesthetic broll vertical` : `${coreTopic} aesthetic broll`,
+            targetRatio === '9:16' ? `${coreTopic} visual raw 4k` : `${coreTopic} cinematic visual`,
+            targetRatio === '9:16' ? `${coreTopic} cinematic vertical` : `${coreTopic} raw nature`,
+          ],
       platform: 'pinterest',
       author: 'Pinterest Creator',
     },
     reddit: {
-      queries: [
-        targetRatio === '9:16' ? `${coreTopic} raw footage pov` : `${coreTopic} raw footage action`,
-        targetRatio === '9:16' ? `${coreTopic} action cam raw` : `${coreTopic} gopro 4k raw`,
-        targetRatio === '9:16' ? `${coreTopic} stunt run gopro` : `${coreTopic} drone raw footage`,
-      ],
+      queries: isFresh
+        ? [
+            targetRatio === '9:16' ? `${coreTopic} pov` : `${coreTopic} raw`,
+            targetRatio === '9:16' ? `${coreTopic} raw` : `${coreTopic} gopro`,
+            targetRatio === '9:16' ? `${coreTopic} action` : `${coreTopic} footage`,
+          ]
+        : [
+            targetRatio === '9:16' ? `${coreTopic} raw footage pov` : `${coreTopic} raw footage action`,
+            targetRatio === '9:16' ? `${coreTopic} action cam raw` : `${coreTopic} gopro 4k raw`,
+            targetRatio === '9:16' ? `${coreTopic} stunt run gopro` : `${coreTopic} drone raw footage`,
+          ],
       platform: 'reddit',
       author: 'Reddit Creator',
     },
     youtube: {
-      queries: [
-        targetRatio === '9:16' ? `${coreTopic} raw footage shorts no text` : `${coreTopic} raw footage`,
-        targetRatio === '9:16' ? `${coreTopic} gopro pov shorts` : `${coreTopic} 4k broll 60fps`,
-        targetRatio === '9:16' ? `${coreTopic} broll vertical 4k` : `${coreTopic} cinematic slow motion`,
-      ],
+      queries: isFresh
+        ? [
+            targetRatio === '9:16' ? `${coreTopic} shorts` : `${coreTopic} raw footage`,
+            targetRatio === '9:16' ? `${coreTopic} raw` : `${coreTopic} 4k broll`,
+            targetRatio === '9:16' ? `${coreTopic} broll` : `${coreTopic} cinematic`,
+            targetRatio === '9:16' ? `${coreTopic} pov` : `${coreTopic} 60fps`,
+          ]
+        : [
+            targetRatio === '9:16' ? `${coreTopic} raw footage shorts no text` : `${coreTopic} raw footage`,
+            targetRatio === '9:16' ? `${coreTopic} gopro pov shorts` : `${coreTopic} 4k broll 60fps`,
+            targetRatio === '9:16' ? `${coreTopic} broll vertical 4k` : `${coreTopic} cinematic slow motion`,
+          ],
       platform: 'youtube',
       author: 'YouTube Creator',
     },
@@ -1678,11 +1711,17 @@ async function scrapeMultiPlatformClips(
   if (allClips.length < totalCount) {
     const primaryPlat = platformsToQuery[0];
     const cfg = platformConfigs[primaryPlat] || platformConfigs.youtube;
-    const fallbackQueries = [
-      `${coreTopic} unedited raw`,
-      `${coreTopic} slow motion 4k`,
-      `${coreTopic} GoPro action`,
-    ];
+    const fallbackQueries = isFresh
+      ? [
+          targetRatio === '9:16' ? `${coreTopic} shorts` : `${coreTopic} raw footage`,
+          targetRatio === '9:16' ? `${coreTopic} broll` : `${coreTopic} 4k broll`,
+          targetRatio === '9:16' ? `${coreTopic} pov` : `${coreTopic} cinematic`,
+        ]
+      : [
+          `${coreTopic} unedited raw`,
+          `${coreTopic} slow motion 4k`,
+          `${coreTopic} GoPro action`,
+        ];
     for (const fq of fallbackQueries) {
       if (allClips.length >= totalCount) break;
       try {
