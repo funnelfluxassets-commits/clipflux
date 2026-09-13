@@ -282,10 +282,10 @@ export const ResultCard: React.FC<ResultCardProps> = ({
                       } catch {}
                     }}
                     disabled={isDownloading}
-                    className={`min-w-[96px] sm:min-w-[104px] h-9 sm:h-10 px-3 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center justify-center gap-1.5 cursor-pointer disabled:cursor-wait ${
+                    className={`min-w-[96px] sm:min-w-[104px] h-9 sm:h-10 px-3 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center justify-center gap-1.5 cursor-pointer disabled:cursor-wait border ${
                       isDownloading || isSuccess
-                        ? 'bg-emerald-500 text-white shadow-sm shadow-emerald-500/25 active:scale-95'
-                        : 'bg-white dark:bg-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 active:scale-95 hover:border-zinc-300 dark:hover:border-zinc-600'
+                        ? 'border-emerald-400 bg-emerald-500/50 text-white shadow-[0_0_15px_rgba(16,185,129,0.4)] active:scale-95'
+                        : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:border-emerald-400 hover:shadow-[0_0_12px_rgba(16,185,129,0.35)] hover:bg-emerald-500/20 active:scale-95'
                     }`}
                   >
                     {isDownloading ? (
@@ -346,10 +346,10 @@ export const ResultCard: React.FC<ResultCardProps> = ({
                 <button
                   type="button"
                   onClick={() => handleSelectPreset('author_title')}
-                  className={`px-2 py-0.5 rounded-lg text-[10px] font-semibold transition-all ${
+                  className={`px-2.5 py-1 rounded-full text-[10px] font-semibold transition-all border ${
                     activePreset === 'author_title'
-                      ? 'bg-emerald-500 text-white shadow-sm'
-                      : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-200 dark:hover:bg-zinc-700'
+                      ? 'border-emerald-400 dark:border-emerald-300 bg-emerald-500/50 dark:bg-emerald-500/50 text-white shadow-[0_0_12px_rgba(16,185,129,0.35)]'
+                      : 'border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:border-emerald-400 hover:shadow-[0_0_10px_rgba(16,185,129,0.25)]'
                   }`}
                 >
                   Author + Title
@@ -357,10 +357,10 @@ export const ResultCard: React.FC<ResultCardProps> = ({
                 <button
                   type="button"
                   onClick={() => handleSelectPreset('title_only')}
-                  className={`px-2 py-0.5 rounded-lg text-[10px] font-semibold transition-all ${
+                  className={`px-2.5 py-1 rounded-full text-[10px] font-semibold transition-all border ${
                     activePreset === 'title_only'
-                      ? 'bg-emerald-500 text-white shadow-sm'
-                      : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-200 dark:hover:bg-zinc-700'
+                      ? 'border-emerald-400 dark:border-emerald-300 bg-emerald-500/50 dark:bg-emerald-500/50 text-white shadow-[0_0_12px_rgba(16,185,129,0.35)]'
+                      : 'border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:border-emerald-400 hover:shadow-[0_0_10px_rgba(16,185,129,0.25)]'
                   }`}
                 >
                   Title Only
@@ -368,10 +368,10 @@ export const ResultCard: React.FC<ResultCardProps> = ({
                 <button
                   type="button"
                   onClick={() => handleSelectPreset('author_id')}
-                  className={`px-2 py-0.5 rounded-lg text-[10px] font-semibold transition-all ${
+                  className={`px-2.5 py-1 rounded-full text-[10px] font-semibold transition-all border ${
                     activePreset === 'author_id'
-                      ? 'bg-emerald-500 text-white shadow-sm'
-                      : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-200 dark:hover:bg-zinc-700'
+                      ? 'border-emerald-400 dark:border-emerald-300 bg-emerald-500/50 dark:bg-emerald-500/50 text-white shadow-[0_0_12px_rgba(16,185,129,0.35)]'
+                      : 'border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:border-emerald-400 hover:shadow-[0_0_10px_rgba(16,185,129,0.25)]'
                   }`}
                 >
                   Author + ID

@@ -308,10 +308,10 @@ export const App: React.FC = () => {
           <div className="inline-flex items-center bg-zinc-100 dark:bg-zinc-900/90 p-1.5 rounded-full border border-zinc-200 dark:border-zinc-800 shadow-lg shadow-zinc-200/50 dark:shadow-none">
             <button
               onClick={() => setMode('downloader')}
-              className={`flex items-center gap-2 px-4 sm:px-6 py-2 rounded-full text-xs sm:text-sm font-bold transition-all duration-200 cursor-pointer ${
+              className={`flex items-center gap-2 px-4 sm:px-6 py-2 rounded-full text-xs sm:text-sm font-bold transition-all duration-200 cursor-pointer border ${
                 mode === 'downloader'
-                  ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/30'
-                  : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
+                  ? 'border-emerald-400 dark:border-emerald-300 bg-emerald-500/50 dark:bg-emerald-500/50 text-white shadow-[0_0_16px_rgba(16,185,129,0.4)]'
+                  : 'border-emerald-500/25 dark:border-emerald-500/30 bg-emerald-500/10 dark:bg-emerald-500/[0.08] text-emerald-600 dark:text-emerald-400 hover:border-emerald-400 dark:hover:border-emerald-400 hover:shadow-[0_0_14px_rgba(16,185,129,0.35)] hover:bg-emerald-500/20'
               }`}
             >
               <Download className="w-4 h-4" />
@@ -320,15 +320,19 @@ export const App: React.FC = () => {
 
             <button
               onClick={() => setMode('scraper')}
-              className={`flex items-center gap-2 px-4 sm:px-6 py-2 rounded-full text-xs sm:text-sm font-bold transition-all duration-200 cursor-pointer ${
+              className={`flex items-center gap-2 px-4 sm:px-6 py-2 rounded-full text-xs sm:text-sm font-bold transition-all duration-200 cursor-pointer border ${
                 mode === 'scraper'
-                  ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/30'
-                  : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
+                  ? 'border-emerald-400 dark:border-emerald-300 bg-emerald-500/50 dark:bg-emerald-500/50 text-white shadow-[0_0_16px_rgba(16,185,129,0.4)]'
+                  : 'border-emerald-500/25 dark:border-emerald-500/30 bg-emerald-500/10 dark:bg-emerald-500/[0.08] text-emerald-600 dark:text-emerald-400 hover:border-emerald-400 dark:hover:border-emerald-400 hover:shadow-[0_0_14px_rgba(16,185,129,0.35)] hover:bg-emerald-500/20'
               }`}
             >
               <Sparkles className="w-4 h-4 text-amber-500 dark:text-amber-300" />
               <span>Clean Scraper</span>
-              <span className="text-[10px] bg-emerald-100 dark:bg-emerald-950/60 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 px-1.5 py-0.5 rounded-full font-mono font-bold">
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono font-bold border transition-colors ${
+                mode === 'scraper'
+                  ? 'bg-emerald-600/60 border-emerald-300/40 text-emerald-100'
+                  : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-300'
+              }`}>
                 AI Filter
               </span>
             </button>

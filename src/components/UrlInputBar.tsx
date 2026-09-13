@@ -99,16 +99,16 @@ export const UrlInputBar: React.FC<UrlInputBarProps> = ({
               type="button"
               onClick={handlePaste}
               aria-label="Paste from clipboard"
-              className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 hover:text-zinc-900 dark:hover:text-white transition-all border border-zinc-200 dark:border-zinc-700/50 cursor-pointer"
+              className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:border-emerald-400 hover:shadow-[0_0_14px_rgba(16,185,129,0.35)] hover:bg-emerald-500/20 transition-all cursor-pointer"
             >
               {pasteSuccess ? (
                 <>
                   <Check className="w-3.5 h-3.5 text-emerald-500" />
-                  <span className="text-emerald-500">Pasted!</span>
+                  <span className="text-emerald-500 font-bold">Pasted!</span>
                 </>
               ) : (
                 <>
-                  <Clipboard className="w-3.5 h-3.5 text-zinc-400" />
+                  <Clipboard className="w-3.5 h-3.5 text-emerald-500" />
                   <span>Paste</span>
                 </>
               )}
@@ -118,7 +118,7 @@ export const UrlInputBar: React.FC<UrlInputBarProps> = ({
               type="button"
               onClick={() => onSubmit(url.trim())}
               disabled={isLoading || !url.trim()}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-xs sm:text-sm bg-emerald-500 hover:bg-emerald-400 text-white shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/50 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-emerald-500 transition-all active:scale-95 cursor-pointer"
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-xs sm:text-sm border border-emerald-400/80 bg-emerald-500/50 hover:bg-emerald-500/70 hover:border-emerald-300 text-white shadow-[0_0_20px_rgba(16,185,129,0.35)] hover:shadow-[0_0_30px_rgba(16,185,129,0.5)] disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-95 cursor-pointer"
             >
               {isLoading ? (
                 <>

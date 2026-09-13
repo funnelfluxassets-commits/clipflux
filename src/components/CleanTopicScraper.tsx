@@ -266,29 +266,24 @@ export const CleanTopicScraper: React.FC<CleanTopicScraperProps> = ({
             </label>
             <div className="grid grid-cols-3 gap-1.5">
               {[
-                { value: '9:16', label: '9:16', tag: 'Vertical', icon: Smartphone },
-                { value: '16:9', label: '16:9', tag: 'Wide', icon: Monitor },
-                { value: 'unknown', label: 'Any', tag: 'Ratio', icon: Layers },
-              ].map(({ value, label, tag, icon: Icon }) => {
+                { value: '9:16', label: '9:16 Vertical', icon: Smartphone },
+                { value: '16:9', label: '16:9 Wide', icon: Monitor },
+                { value: 'unknown', label: 'Any Ratio', icon: Layers },
+              ].map(({ value, label, icon: Icon }) => {
                 const isSelected = targetRatio === value;
                 return (
                   <button
                     key={value}
                     type="button"
                     onClick={() => setTargetRatio(value as AspectRatioType)}
-                    className={`flex flex-col items-center justify-center py-2 px-1 rounded-xl text-xs border transition-all cursor-pointer ${
+                    className={`whitespace-nowrap px-2.5 py-2 rounded-full text-xs font-semibold transition-all duration-200 cursor-pointer flex items-center justify-center gap-1 border ${
                       isSelected
-                        ? 'bg-emerald-500 hover:bg-emerald-400 border-emerald-500 text-white font-bold shadow-md shadow-emerald-500/25'
-                        : 'border-emerald-500/30 dark:border-emerald-500/25 bg-emerald-500/[0.04] dark:bg-emerald-500/[0.08] hover:border-emerald-500/50 hover:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-semibold'
+                        ? 'border-emerald-400 dark:border-emerald-300 bg-emerald-500/50 dark:bg-emerald-500/50 text-white font-bold shadow-[0_0_16px_rgba(16,185,129,0.4)]'
+                        : 'border-emerald-500/25 dark:border-emerald-500/30 bg-emerald-500/10 dark:bg-emerald-500/[0.08] text-emerald-600 dark:text-emerald-400 hover:border-emerald-400 dark:hover:border-emerald-400 hover:shadow-[0_0_14px_rgba(16,185,129,0.35)] hover:bg-emerald-500/20'
                     }`}
                   >
-                    <div className="flex items-center gap-1">
-                      <Icon className={`w-3.5 h-3.5 ${isSelected ? 'text-white' : 'text-emerald-500'}`} />
-                      <span>{label}</span>
-                    </div>
-                    <span className={`text-[10px] mt-0.5 ${isSelected ? 'text-emerald-100 dark:text-zinc-200' : 'text-zinc-500 dark:text-zinc-400'}`}>
-                      {tag}
-                    </span>
+                    <Icon className={`w-3.5 h-3.5 ${isSelected ? 'text-white' : 'text-emerald-500'}`} />
+                    <span>{label}</span>
                   </button>
                 );
               })}
@@ -303,29 +298,24 @@ export const CleanTopicScraper: React.FC<CleanTopicScraperProps> = ({
             </label>
             <div className="grid grid-cols-2 gap-1.5">
               {[
-                { value: 'all', label: 'All-Time', tag: 'Viral' },
-                { value: 'week', label: 'Past Week', tag: 'New' },
-                { value: 'month', label: 'Past Month', tag: 'Recent' },
-                { value: 'year', label: 'Past Year', tag: '12 Mo' },
-              ].map(({ value, label, tag }) => {
+                { value: 'all', label: 'All Time' },
+                { value: 'week', label: 'Last Week' },
+                { value: 'month', label: 'Last Month' },
+                { value: 'year', label: 'Last Year' },
+              ].map(({ value, label }) => {
                 const isSelected = freshness === value;
                 return (
                   <button
                     key={value}
                     type="button"
                     onClick={() => setFreshness(value as FreshnessType)}
-                    className={`flex items-center justify-between px-2.5 py-2 rounded-xl text-xs border transition-all cursor-pointer ${
+                    className={`whitespace-nowrap px-3 py-2 rounded-full text-xs font-semibold transition-all duration-200 cursor-pointer flex items-center justify-center border ${
                       isSelected
-                        ? 'bg-emerald-500 hover:bg-emerald-400 border-emerald-500 text-white font-bold shadow-md shadow-emerald-500/25'
-                        : 'border-emerald-500/30 dark:border-emerald-500/25 bg-emerald-500/[0.04] dark:bg-emerald-500/[0.08] hover:border-emerald-500/50 hover:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-semibold'
+                        ? 'border-emerald-400 dark:border-emerald-300 bg-emerald-500/50 dark:bg-emerald-500/50 text-white font-bold shadow-[0_0_16px_rgba(16,185,129,0.4)]'
+                        : 'border-emerald-500/25 dark:border-emerald-500/30 bg-emerald-500/10 dark:bg-emerald-500/[0.08] text-emerald-600 dark:text-emerald-400 hover:border-emerald-400 dark:hover:border-emerald-400 hover:shadow-[0_0_14px_rgba(16,185,129,0.35)] hover:bg-emerald-500/20'
                     }`}
                   >
                     <span>{label}</span>
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded-md ${
-                      isSelected ? 'bg-emerald-600/70 text-emerald-100' : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
-                    }`}>
-                      {tag}
-                    </span>
                   </button>
                 );
               })}
@@ -346,16 +336,13 @@ export const CleanTopicScraper: React.FC<CleanTopicScraperProps> = ({
                     key={num}
                     type="button"
                     onClick={() => setClipCount(num)}
-                    className={`flex flex-col items-center justify-center py-2 px-1 rounded-xl text-xs border transition-all cursor-pointer ${
+                    className={`whitespace-nowrap px-1.5 py-2 rounded-full text-xs font-semibold transition-all duration-200 cursor-pointer flex items-center justify-center border ${
                       isSelected
-                        ? 'bg-emerald-500 hover:bg-emerald-400 border-emerald-500 text-white font-bold shadow-md shadow-emerald-500/25'
-                        : 'border-emerald-500/30 dark:border-emerald-500/25 bg-emerald-500/[0.04] dark:bg-emerald-500/[0.08] hover:border-emerald-500/50 hover:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-semibold'
+                        ? 'border-emerald-400 dark:border-emerald-300 bg-emerald-500/50 dark:bg-emerald-500/50 text-white font-bold shadow-[0_0_16px_rgba(16,185,129,0.4)]'
+                        : 'border-emerald-500/25 dark:border-emerald-500/30 bg-emerald-500/10 dark:bg-emerald-500/[0.08] text-emerald-600 dark:text-emerald-400 hover:border-emerald-400 dark:hover:border-emerald-400 hover:shadow-[0_0_14px_rgba(16,185,129,0.35)] hover:bg-emerald-500/20'
                     }`}
                   >
-                    <span className="text-xs font-bold">{num}</span>
-                    <span className={`text-[10px] ${isSelected ? 'text-emerald-100 dark:text-zinc-200' : 'text-zinc-500 dark:text-zinc-400'}`}>
-                      Clips
-                    </span>
+                    <span>{num} Clips</span>
                   </button>
                 );
               })}
@@ -370,30 +357,25 @@ export const CleanTopicScraper: React.FC<CleanTopicScraperProps> = ({
             </label>
             <div className="flex flex-wrap gap-1.5">
               {[
-                { value: 'youtube', label: 'YouTube', tag: 'Shorts' },
-                { value: 'tiktok', label: 'TikTok', tag: 'Viral' },
-                { value: 'instagram', label: 'Instagram', tag: 'Reels' },
-                { value: 'pinterest', label: 'Pinterest', tag: 'Pins' },
-                { value: 'reddit', label: 'Reddit', tag: 'Clips' },
-              ].map(({ value, label, tag }) => {
+                { value: 'youtube', label: 'YouTube' },
+                { value: 'tiktok', label: 'TikTok' },
+                { value: 'instagram', label: 'Instagram' },
+                { value: 'pinterest', label: 'Pinterest' },
+                { value: 'reddit', label: 'Reddit' },
+              ].map(({ value, label }) => {
                 const isChecked = selectedPlatforms.includes(value as SupportedPlatform);
                 return (
                   <button
                     key={value}
                     type="button"
                     onClick={() => togglePlatform(value as SupportedPlatform)}
-                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs border transition-all cursor-pointer ${
+                    className={`whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-semibold transition-all duration-200 cursor-pointer flex items-center justify-center border ${
                       isChecked
-                        ? 'bg-emerald-500 hover:bg-emerald-400 border-emerald-500 text-white font-bold shadow-md shadow-emerald-500/25'
-                        : 'border-emerald-500/30 dark:border-emerald-500/25 bg-emerald-500/[0.04] dark:bg-emerald-500/[0.08] hover:border-emerald-500/50 hover:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-semibold'
+                        ? 'border-emerald-400 dark:border-emerald-300 bg-emerald-500/50 dark:bg-emerald-500/50 text-white font-bold shadow-[0_0_16px_rgba(16,185,129,0.4)]'
+                        : 'border-emerald-500/25 dark:border-emerald-500/30 bg-emerald-500/10 dark:bg-emerald-500/[0.08] text-emerald-600 dark:text-emerald-400 hover:border-emerald-400 dark:hover:border-emerald-400 hover:shadow-[0_0_14px_rgba(16,185,129,0.35)] hover:bg-emerald-500/20'
                     }`}
                   >
                     <span>{label}</span>
-                    <span className={`text-[10px] px-1 py-0.2 rounded ${
-                      isChecked ? 'bg-emerald-600/70 text-emerald-100' : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
-                    }`}>
-                      {tag}
-                    </span>
                   </button>
                 );
               })}
@@ -407,7 +389,7 @@ export const CleanTopicScraper: React.FC<CleanTopicScraperProps> = ({
           type="button"
           onClick={handleStartScrape}
           disabled={isScraping || !topic.trim()}
-          className="w-full flex items-center justify-center gap-2 py-3.5 px-6 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-white font-bold text-sm sm:text-base shadow-xl shadow-emerald-500/30 hover:shadow-emerald-500/50 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-[0.99]"
+          className="w-full flex items-center justify-center gap-2 py-3.5 px-6 rounded-2xl border border-emerald-400/80 bg-emerald-500/50 hover:bg-emerald-500/65 hover:border-emerald-300 text-white font-bold text-sm sm:text-base shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:shadow-[0_0_30px_rgba(16,185,129,0.45)] disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 active:scale-[0.99] cursor-pointer"
         >
           {isScraping ? (
             <>
@@ -471,7 +453,7 @@ export const CleanTopicScraper: React.FC<CleanTopicScraperProps> = ({
             <button
               onClick={handleDownloadAllZip}
               disabled={isZipping}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white font-bold text-xs sm:text-sm shadow-lg shadow-emerald-500/25 active:scale-95 transition-all cursor-pointer"
+              className="flex items-center gap-2 px-5 py-2 rounded-full border border-emerald-400/80 bg-emerald-500/50 hover:bg-emerald-500/65 hover:border-emerald-300 text-white font-bold text-xs sm:text-sm shadow-[0_0_16px_rgba(16,185,129,0.3)] hover:shadow-[0_0_24px_rgba(16,185,129,0.45)] active:scale-95 transition-all cursor-pointer"
             >
               {isZipping ? (
                 <>
@@ -495,7 +477,9 @@ export const CleanTopicScraper: React.FC<CleanTopicScraperProps> = ({
                 className="rounded-2xl bg-white dark:bg-zinc-900/80 border border-zinc-200 dark:border-zinc-800 overflow-hidden shadow-lg shadow-zinc-200/50 dark:shadow-xl hover:border-emerald-500/50 transition-all flex flex-col group"
               >
                 {/* Media Thumbnail */}
-                <div className="relative aspect-video bg-zinc-950 overflow-hidden">
+                <div className={`relative bg-zinc-950 overflow-hidden ${
+                  clip.aspect_ratio === '9:16' ? 'aspect-[9/16] max-h-[460px]' : 'aspect-video'
+                }`}>
                   <img
                     src={clip.thumbnail}
                     alt={clip.title}
@@ -550,12 +534,12 @@ export const CleanTopicScraper: React.FC<CleanTopicScraperProps> = ({
                       type="button"
                       onClick={() => handleDownloadSingleClip(clip)}
                       disabled={downloadingClipId === clip.id}
-                      className="flex-1 relative overflow-hidden flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-90 text-white font-bold text-xs shadow-md shadow-emerald-500/20 transition-all active:scale-95 cursor-pointer"
+                      className="flex-1 relative overflow-hidden flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl border border-emerald-400/60 bg-emerald-500/50 hover:bg-emerald-500/65 hover:border-emerald-300 disabled:opacity-85 text-white font-bold text-xs shadow-[0_0_12px_rgba(16,185,129,0.25)] hover:shadow-[0_0_18px_rgba(16,185,129,0.4)] transition-all active:scale-95 cursor-pointer"
                     >
                       {downloadingClipId === clip.id ? (
                         <>
                           <div 
-                            className="absolute inset-0 bg-emerald-600/90 transition-all duration-150"
+                            className="absolute inset-0 bg-emerald-500/70 transition-all duration-150"
                             style={{ width: `${singleDownloadProgress}%` }}
                           />
                           <span className="relative z-10 flex items-center gap-1.5">

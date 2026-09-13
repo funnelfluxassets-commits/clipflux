@@ -1395,7 +1395,7 @@ app.get('/api/download', async (req, res) => {
 
 function cleanSearchTopic(topic: string): string {
   return topic
-    .replace(/\b(funny\s*clips?|funny|clips?|memes?|compilations?|fails?|moments?|videos?|shorts?|tiktok|instagram|reels?)\b/gi, '')
+    .replace(/\b(shorts?|tiktok|instagram|reels?|download|free)\b/gi, '')
     .replace(/[#@]/g, '')
     .replace(/\s+/g, ' ')
     .trim() || topic.trim();
@@ -1428,16 +1428,43 @@ const BAD_TITLE_PATTERNS = [
 
   // Questions & Comparisons
   /\?/, /\bcan you\b/i, /\bwould you\b/i, /\bchallenge\b/i, /\bwhich one\b/i, /\|/, /\bvs\b/i,
-
-  // Emojis (memes and clickbait shorts are filled with emojis)
-  /[\u{1F600}-\u{1F64F}\u{1F900}-\u{1F9FF}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/u,
 ];
 
-function isClipStrictlyClean(title: string): boolean {
+function isClipStrictlyClean(title: string, userQuery?: string): boolean {
+  const queryLower = (userQuery || '').toLowerCase();
+  const queryWords = new Set(queryLower.split(/\s+/).filter((w) => w.length > 2));
+
   for (const pat of BAD_TITLE_PATTERNS) {
-    if (pat.test(title)) return false;
+    if (pat.test(title)) {
+      // If the matched keyword was intentionally searched by user (e.g. 'fail', 'fails', 'pov'), allow it
+      const match = title.match(pat);
+      if (match && match[0]) {
+        const matchedWord = match[0].trim().toLowerCase();
+        if (queryWords.has(matchedWord) || queryLower.includes(matchedWord)) {
+          continue;
+        }
+      }
+      return false;
+    }
   }
   return true;
+}
+
+// Strictly verify whether a YouTube video is a genuine 9:16 vertical Short vs standard 16:9 video
+async function isGenuineShort(videoId: string): Promise<boolean> {
+  try {
+    const res = await fetch(`https://www.youtube.com/shorts/${videoId}`, {
+      method: 'HEAD',
+      redirect: 'manual',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      },
+    });
+    // YouTube returns HTTP 200 for genuine 9:16 Shorts. Standard 16:9 videos redirect (HTTP 302/303) to /watch?v=
+    return res.status === 200;
+  } catch {
+    return false;
+  }
 }
 
 // Search InnerTube for raw b-roll and action footage
@@ -1450,14 +1477,23 @@ async function searchRawClipsEngine(
   countRemaining: number,
   freshness: string = 'all'
 ) {
-  const encoded = encodeURIComponent(query);
+  let effectiveQuery = query;
+  if (targetRatio === '9:16' && freshness !== 'all') {
+    if (freshness === 'week') effectiveQuery += ' this week';
+    else if (freshness === 'month') effectiveQuery += ' this month';
+    else if (freshness === 'year') effectiveQuery += ' this year';
+  }
+
+  const encoded = encodeURIComponent(effectiveQuery);
   let searchUrl = `https://www.youtube.com/results?search_query=${encoded}`;
-  if (freshness === 'week') {
-    searchUrl += '&sp=EgQIAxAB'; // Upload date: This week
-  } else if (freshness === 'month') {
-    searchUrl += '&sp=EgQIBBAB'; // Upload date: This month
-  } else if (freshness === 'year') {
-    searchUrl += '&sp=EgQIBRAB'; // Upload date: This year
+  if (targetRatio !== '9:16') {
+    if (freshness === 'week') {
+      searchUrl += '&sp=EgQIAxAB'; // Upload date: This week
+    } else if (freshness === 'month') {
+      searchUrl += '&sp=EgQIBBAB'; // Upload date: This month
+    } else if (freshness === 'year') {
+      searchUrl += '&sp=EgQIBRAB'; // Upload date: This year
+    }
   }
 
   const res = await fetch(searchUrl, {
@@ -1492,7 +1528,7 @@ async function searchRawClipsEngine(
           if (!videoId || seenIds.has(videoId)) continue;
 
           const title = s.overlayMetadata?.primaryText?.content || s.accessibilityText?.split(',')[0] || 'Clean Raw Clip';
-          if (!isClipStrictlyClean(title)) continue;
+          if (!isClipStrictlyClean(title, query)) continue;
 
           seenIds.add(videoId);
 
@@ -1531,16 +1567,16 @@ async function searchRawClipsEngine(
         if (!videoId || seenIds.has(videoId)) continue;
 
         const title = v.title?.runs?.[0]?.text || 'Clean Viral Video';
-        if (!isClipStrictlyClean(title)) continue;
+        if (!isClipStrictlyClean(title, query)) continue;
 
         const durationText = v.lengthText?.simpleText || '';
-        // Check if this video is a 9:16 vertical Short:
-        // Duration <= 60 seconds (e.g. 0:04, 0:30, 1:00) or has reelWatchEndpoint
-        const isShortDuration = durationText.startsWith('0:') || durationText === '1:00';
-        const isReel = !!v.navigationEndpoint?.reelWatchEndpoint;
-        const isShort = isShortDuration || isReel;
+        let isShort = !!v.navigationEndpoint?.reelWatchEndpoint;
+        if (!isShort && (durationText.startsWith('0:') || durationText === '1:00')) {
+          // Strictly verify if YouTube serves this video as a genuine 9:16 vertical Short
+          isShort = await isGenuineShort(videoId);
+        }
 
-        // Aspect ratio matching
+        // Strict Aspect ratio matching:
         if (targetRatio === '9:16' && !isShort) continue;
         if (targetRatio === '16:9' && isShort) continue;
 
@@ -1658,14 +1694,15 @@ async function scrapeMultiPlatformClips(
     youtube: {
       queries: isFresh
         ? [
-            targetRatio === '9:16' ? `${coreTopic} shorts` : `${coreTopic} raw footage`,
-            targetRatio === '9:16' ? `${coreTopic} raw` : `${coreTopic} 4k broll`,
-            targetRatio === '9:16' ? `${coreTopic} broll` : `${coreTopic} cinematic`,
-            targetRatio === '9:16' ? `${coreTopic} pov` : `${coreTopic} 60fps`,
+            targetRatio === '9:16' ? `${coreTopic} #shorts` : `${coreTopic} raw footage`,
+            targetRatio === '9:16' ? `${coreTopic} shorts` : `${coreTopic} 4k broll`,
+            targetRatio === '9:16' ? `${coreTopic} vertical` : `${coreTopic} cinematic`,
+            targetRatio === '9:16' ? `${coreTopic} viral shorts` : `${coreTopic} 60fps`,
           ]
         : [
-            targetRatio === '9:16' ? `${coreTopic} raw footage shorts no text` : `${coreTopic} raw footage`,
-            targetRatio === '9:16' ? `${coreTopic} gopro pov shorts` : `${coreTopic} 4k broll 60fps`,
+            targetRatio === '9:16' ? `${coreTopic} #shorts` : `${coreTopic} raw footage`,
+            targetRatio === '9:16' ? `${coreTopic} raw footage shorts no text` : `${coreTopic} 4k broll 60fps`,
+            targetRatio === '9:16' ? `${coreTopic} gopro pov shorts` : `${coreTopic} broll 4k`,
             targetRatio === '9:16' ? `${coreTopic} broll vertical 4k` : `${coreTopic} cinematic slow motion`,
           ],
       platform: 'youtube',
@@ -1707,20 +1744,20 @@ async function scrapeMultiPlatformClips(
     }
   }
 
-  // Fallback: If strict filters yielded fewer clips than requested, run secondary clean queries
+  // Fallback 1: If strict filters yielded fewer clips than requested, run secondary clean queries
   if (allClips.length < totalCount) {
     const primaryPlat = platformsToQuery[0];
     const cfg = platformConfigs[primaryPlat] || platformConfigs.youtube;
     const fallbackQueries = isFresh
       ? [
-          targetRatio === '9:16' ? `${coreTopic} shorts` : `${coreTopic} raw footage`,
-          targetRatio === '9:16' ? `${coreTopic} broll` : `${coreTopic} 4k broll`,
+          targetRatio === '9:16' ? `${coreTopic} #shorts` : `${coreTopic} raw footage`,
+          targetRatio === '9:16' ? `${coreTopic} shorts` : `${coreTopic} 4k broll`,
           targetRatio === '9:16' ? `${coreTopic} pov` : `${coreTopic} cinematic`,
         ]
       : [
-          `${coreTopic} unedited raw`,
-          `${coreTopic} slow motion 4k`,
-          `${coreTopic} GoPro action`,
+          targetRatio === '9:16' ? `${coreTopic} #shorts` : `${coreTopic} unedited raw`,
+          targetRatio === '9:16' ? `${coreTopic} vertical` : `${coreTopic} slow motion 4k`,
+          targetRatio === '9:16' ? `${coreTopic} pov action` : `${coreTopic} GoPro action`,
         ];
     for (const fq of fallbackQueries) {
       if (allClips.length >= totalCount) break;
@@ -1733,6 +1770,29 @@ async function scrapeMultiPlatformClips(
           seenIds,
           totalCount - allClips.length,
           freshness
+        );
+        allClips.push(...batch);
+      } catch {}
+    }
+  }
+
+  // Fallback 2: If date filter was so tight that we still need clips, broaden freshness to fulfill count
+  if (allClips.length < totalCount) {
+    const cfg = platformConfigs[platformsToQuery[0]] || platformConfigs.youtube;
+    const broaderQueries = targetRatio === '9:16'
+      ? [`${coreTopic} #shorts`, `${coreTopic} shorts`, `${coreTopic} reels`]
+      : [`${coreTopic} raw footage`, `${coreTopic} broll`, `${coreTopic} 4k`];
+    for (const bq of broaderQueries) {
+      if (allClips.length >= totalCount) break;
+      try {
+        const batch = await searchRawClipsEngine(
+          bq,
+          targetRatio,
+          cfg.platform,
+          cfg.author,
+          seenIds,
+          totalCount - allClips.length,
+          'all'
         );
         allClips.push(...batch);
       } catch {}
