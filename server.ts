@@ -1114,7 +1114,7 @@ app.get('/api/download', async (req, res) => {
         
         if (videoId) {
           try {
-            const tubeUrl = `https://youtube-video-downloader.funnelfluxassets.com/api/proxy-download?id=${videoId}&quality=audio&type=audio&filename=${encodeURIComponent(safeFilename)}&ext=mp3`;
+            const tubeUrl = `https://youtube-video-downloader.funnelfluxassets.com/api/proxy-download?id=${videoId}&quality=audio&type=audio&filename=audio_${videoId}.mp3&ext=mp3`;
             const tubeRes = await fetch(tubeUrl);
             if (tubeRes.ok && tubeRes.body) {
               const cl = tubeRes.headers.get('content-length');
@@ -1241,7 +1241,7 @@ app.get('/api/download', async (req, res) => {
       if (videoId) {
         try {
           const qNum = format.includes('360') ? '360' : format.includes('1080') ? '1080' : '720';
-          const tubeUrl = `https://youtube-video-downloader.funnelfluxassets.com/api/proxy-download?id=${videoId}&quality=${qNum}&type=video&filename=${encodeURIComponent(safeFilename)}&ext=mp4`;
+          const tubeUrl = `https://youtube-video-downloader.funnelfluxassets.com/api/proxy-download?id=${videoId}&quality=${qNum}&type=video&filename=video_${videoId}.mp4&ext=mp4`;
           const tubeRes = await fetch(tubeUrl);
           if (tubeRes.ok && tubeRes.body) {
             const cl = tubeRes.headers.get('content-length');
@@ -1393,34 +1393,19 @@ async function searchYouTubeClipsEngine(query: string, targetRatio: string, seen
   const contents = data.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents || [];
   const clips: any[] = [];
 
-  // Strict regex to eliminate overlays, rankings, selfie/talking head videos, and compilations
+  // Strict regex to eliminate overlays, rankings, subtitles, coaching text, and memes
   const badPatterns = [
-    /\brank/i,
-    /\btop\s*\d+/i,
-    /\btop\b/i,
-    /\bworst\b/i,
-    /\bcompilat/i,
-    /\bcount\s*down/i,
-    /\breact/i,
-    /\bduet\b/i,
-    /\bstitch/i,
-    /\brelatable\b/i,
-    /\bpov\b/i,
-    /\bday\s*\d+/i,
-    /\bwhoever\b/i,
-    /\bcomment/i,
-    /\bvs\b/i,
-    /\btry not to\b/i,
-    /\btier\b/i,
-    /\blineup\b/i,
-    /\bpart\s*\d+/i,
-    /\bpt\s*\d+/i,
-    /\bnot be possible\b/i,
-    /\bshould not\b/i,
-    /\bnumber\s*\d+/i,
-    /\bepisode\b/i,
-    /\bep\s*\d+/i,
-    /\bseason\b/i,
+    // Rankings & Countdowns
+    /\brank/i, /\btop\s*\d+/i, /\btop\b/i, /\bworst\b/i, /\bbest\b/i, /\bcompilat/i, /\bcount\s*down/i,
+    /\bnot be possible\b/i, /\bshould not\b/i, /\bnumber\s*\d+/i, /\btier\b/i, /\blineup\b/i,
+    // Tutorial & Instructional (coaching labels & subtitles)
+    /\btutorial/i, /\bhow to\b/i, /\blearn/i, /step\b/i, /\btips\b/i, /\bguide\b/i, /\bprogression\b/i, /\bdrill/i, /\btechnique/i, /\beasy way\b/i,
+    // Challenges, Questions & Clickbait (text hooks)
+    /\?/, /\bcan you\b/i, /\bminute/i, /\bchallenge/i, /\bwhat happens/i, /\bimpossible/i, /\bsecret/i,
+    // Memes, Reactions & Talking Heads (burned-in subtitles)
+    /\bbro\b/i, /\bfor no reason\b/i, /\bwait for/i, /\bwhen you\b/i, /\bme when\b/i, /\bmeme/i, /\btroll/i, /\bphonk/i, /\bedit/i, /\breact/i, /\bduet/i, /\bstitch/i, /\brelatable/i, /\bpov\b/i, /\bwhoever/i, /\bcomment/i,
+    // Comparisons & Series
+    /\|/, /\bvs\b/i, /\bother\b/i, /\bpart\s*\d+/i, /\bpt\s*\d+/i, /\bepisode/i, /\bep\s*\d+/i, /\bseason\b/i,
   ];
 
   for (const section of contents) {
@@ -1458,14 +1443,14 @@ async function searchYouTubeClipsEngine(query: string, targetRatio: string, seen
             aspect_ratio: '9:16',
             is_clean: true,
             clean_score: 99,
-            clean_reason: 'Authentic 9:16 vertical Short (zero ranking overlays)',
+            clean_reason: 'Authentic 9:16 vertical Short (zero captions / zero overlays)',
           });
 
           if (clips.length >= countRemaining) return clips;
         }
       }
 
-      // 2. Standard video cards: ONLY accept when targetRatio is 16:9 Wide (NEVER for 9:16!)
+      // 2. Standard video cards: ONLY accept when targetRatio is 16:9 Wide
       if (item.videoRenderer && (targetRatio === '16:9' || targetRatio === 'unknown')) {
         const v = item.videoRenderer;
         const videoId = v.videoId;
@@ -1511,16 +1496,29 @@ async function scrapeYouTubeSearchDirect(topic: string, targetRatio: string, cou
   const seenIds = new Set<string>();
   const allClips: any[] = [];
 
-  // Query 1: Primary clean query
-  const q1 = targetRatio === '9:16' ? `${topic} shorts raw footage` : `${topic} raw footage`;
+  // Normalize spelling typos (e.g. "back fips" -> "backflip")
+  let cleanTopic = topic
+    .replace(/\bback\s*fips\b/gi, 'backflip')
+    .replace(/\bback\s*flip\b/gi, 'backflip')
+    .trim();
+
+  // Query 1: Clean raw footage
+  const q1 = targetRatio === '9:16' ? `${cleanTopic} raw footage shorts` : `${cleanTopic} raw footage`;
   const res1 = await searchYouTubeClipsEngine(q1, targetRatio, seenIds, count);
   allClips.push(...res1);
 
-  // Query 2: Secondary query if more clean clips needed
+  // Query 2: Pure action clips if more needed
   if (allClips.length < count) {
-    const q2 = targetRatio === '9:16' ? `${topic} shorts` : topic;
+    const q2 = targetRatio === '9:16' ? `${cleanTopic} slow motion shorts` : `${cleanTopic} slow motion`;
     const res2 = await searchYouTubeClipsEngine(q2, targetRatio, seenIds, count - allClips.length);
     allClips.push(...res2);
+  }
+
+  // Query 3: B-roll footage if more needed
+  if (allClips.length < count) {
+    const q3 = targetRatio === '9:16' ? `${cleanTopic} broll shorts` : `${cleanTopic} broll`;
+    const res3 = await searchYouTubeClipsEngine(q3, targetRatio, seenIds, count - allClips.length);
+    allClips.push(...res3);
   }
 
   return allClips;
