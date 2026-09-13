@@ -138,14 +138,30 @@ async function ensureFfmpeg(): Promise<string> {
       }
     }
 
-    // 3. Download and gunzip static ffmpeg to /tmp/ffmpeg
-    console.log('[ffmpeg] Downloading static Linux ffmpeg to /tmp/ffmpeg...');
-    const res = await fetch(FFMPEG_LINUX_URL, { redirect: 'follow' });
-    if (!res.ok) throw new Error(`HTTP ${res.status} downloading ffmpeg`);
-    const arrayBuffer = await res.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    const uncompressed = zlib.gunzipSync(buffer);
-    fs.writeFileSync(FFMPEG_TMP_PATH, uncompressed);
+    // 3. Download and gunzip static ffmpeg to /tmp/ffmpeg via stream
+    console.log('[ffmpeg] Downloading static Linux ffmpeg to /tmp/ffmpeg via stream...');
+    await new Promise<void>((resolve, reject) => {
+      const file = fs.createWriteStream(FFMPEG_TMP_PATH);
+      const gunzip = zlib.createGunzip();
+      const download = (targetUrl: string) => {
+        https.get(targetUrl, (res) => {
+          if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+            return download(res.headers.location);
+          }
+          if (res.statusCode !== 200) {
+            return reject(new Error(`Failed to download ffmpeg: HTTP ${res.statusCode}`));
+          }
+          res.pipe(gunzip).pipe(file);
+          file.on('finish', () => {
+            file.close(() => resolve());
+          });
+        }).on('error', (err) => {
+          try { fs.unlinkSync(FFMPEG_TMP_PATH); } catch {}
+          reject(err);
+        });
+      };
+      download(FFMPEG_LINUX_URL);
+    });
     fs.chmodSync(FFMPEG_TMP_PATH, 0o755);
 
     await execFileAsync(FFMPEG_TMP_PATH, ['-version'], { timeout: 10000 });
@@ -1009,7 +1025,7 @@ app.get('/api/info', async (req, res) => {
 app.get('/api/download', async (req, res) => {
   const targetUrl = (req.query.url as string) || '';
   const streamUrl = (req.query.streamUrl as string) || '';
-  const format = (req.query.format as string) || 'cf_1080p_fhd';
+  const format = (req.query.format as string) || (req.query.quality as string) || 'cf_720p_hd';
   const customFilename = (req.query.filename as string) || 'clipflux_media.mp4';
 
   if (!targetUrl && !streamUrl) {
@@ -1224,7 +1240,7 @@ app.get('/api/download', async (req, res) => {
 
       if (videoId) {
         try {
-          const qNum = format.includes('360') ? '360' : format.includes('720') ? '720' : '1080';
+          const qNum = format.includes('360') ? '360' : format.includes('1080') ? '1080' : '720';
           const tubeUrl = `https://youtube-video-downloader.funnelfluxassets.com/api/proxy-download?id=${videoId}&quality=${qNum}&type=video&filename=${encodeURIComponent(safeFilename)}&ext=mp4`;
           const tubeRes = await fetch(tubeUrl);
           if (tubeRes.ok && tubeRes.body) {
