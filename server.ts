@@ -1121,9 +1121,16 @@ app.get('/api/download', async (req, res) => {
               if (cl) res.setHeader('Content-Length', cl);
               res.setHeader('Content-Type', 'audio/mpeg');
               res.setHeader('Cache-Control', 'no-cache');
+              const { pipeline } = await import('stream/promises');
               const { Readable } = await import('stream');
-              // @ts-ignore
-              Readable.fromWeb(tubeRes.body).pipe(res);
+              try {
+                // @ts-ignore
+                await pipeline(Readable.fromWeb(tubeRes.body), res);
+              } catch (pErr: any) {
+                if (pErr.code !== 'ERR_STREAM_PREMATURE_CLOSE' && pErr.code !== 'EPIPE') {
+                  console.warn('[Pipeline audio stream warning]', pErr.message);
+                }
+              }
               return;
             }
           } catch (tubeErr) {
@@ -1215,9 +1222,16 @@ app.get('/api/download', async (req, res) => {
           if (contentLength) res.setHeader('Content-Length', contentLength);
           res.setHeader('Cache-Control', 'no-cache');
 
+          const { pipeline } = await import('stream/promises');
           const { Readable } = await import('stream');
-          // @ts-ignore
-          Readable.fromWeb(cdnRes.body).pipe(res);
+          try {
+            // @ts-ignore
+            await pipeline(Readable.fromWeb(cdnRes.body), res);
+          } catch (pErr: any) {
+            if (pErr.code !== 'ERR_STREAM_PREMATURE_CLOSE' && pErr.code !== 'EPIPE') {
+              console.warn('[Pipeline CDN stream warning]', pErr.message);
+            }
+          }
           return;
         }
       } catch (cdnErr) {
@@ -1248,9 +1262,16 @@ app.get('/api/download', async (req, res) => {
             if (cl) res.setHeader('Content-Length', cl);
             res.setHeader('Content-Type', 'video/mp4');
             res.setHeader('Cache-Control', 'no-cache');
+            const { pipeline } = await import('stream/promises');
             const { Readable } = await import('stream');
-            // @ts-ignore
-            Readable.fromWeb(tubeRes.body).pipe(res);
+            try {
+              // @ts-ignore
+              await pipeline(Readable.fromWeb(tubeRes.body), res);
+            } catch (pErr: any) {
+              if (pErr.code !== 'ERR_STREAM_PREMATURE_CLOSE' && pErr.code !== 'EPIPE') {
+                console.warn('[Pipeline stream warning]', pErr.message);
+              }
+            }
             return;
           }
         } catch (tubeErr) {
