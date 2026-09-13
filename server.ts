@@ -1631,10 +1631,11 @@ async function scrapeMultiPlatformClips(
     if (allClips.length >= totalCount) break;
     const cfg = platformConfigs[plat];
     const needed = Math.min(perPlatformCount, totalCount - allClips.length);
+    let clipsForThisPlatform = 0;
 
     for (const q of cfg.queries) {
-      if (allClips.length >= totalCount) break;
-      const countForQuery = totalCount - allClips.length;
+      if (clipsForThisPlatform >= needed || allClips.length >= totalCount) break;
+      const countForQuery = Math.min(needed - clipsForThisPlatform, totalCount - allClips.length);
       try {
         const batch = await searchRawClipsEngine(
           q,
@@ -1645,6 +1646,7 @@ async function scrapeMultiPlatformClips(
           countForQuery
         );
         allClips.push(...batch);
+        clipsForThisPlatform += batch.length;
       } catch (err) {
         console.warn(`[Scraper] Query error for ${plat} (${q}):`, err);
       }
