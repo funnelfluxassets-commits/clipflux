@@ -14,6 +14,7 @@ import {
   DownloadOption, 
   UserProfile, 
   AspectRatioType, 
+  FreshnessType,
   ScrapedClip 
 } from './types';
 import { Download, Sparkles } from 'lucide-react';
@@ -233,7 +234,8 @@ export const App: React.FC = () => {
     topic: string,
     ratio: AspectRatioType,
     count: number,
-    platforms: SupportedPlatform[]
+    platforms: SupportedPlatform[],
+    freshness: FreshnessType = 'all'
   ): Promise<ScrapedClip[]> => {
     setIsScraping(true);
     setProgressPercent(15);
@@ -256,6 +258,7 @@ export const App: React.FC = () => {
         target_ratio: ratio,
         count: String(count),
         platforms: platforms.join(','),
+        freshness,
       });
 
       const res = await fetch(`/api/scrape?${queryParams.toString()}`);

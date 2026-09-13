@@ -1447,10 +1447,18 @@ async function searchRawClipsEngine(
   platformTag: string,
   authorTag: string,
   seenIds: Set<string>,
-  countRemaining: number
+  countRemaining: number,
+  freshness: string = 'all'
 ) {
   const encoded = encodeURIComponent(query);
-  const searchUrl = `https://www.youtube.com/results?search_query=${encoded}`;
+  let searchUrl = `https://www.youtube.com/results?search_query=${encoded}`;
+  if (freshness === 'week') {
+    searchUrl += '&sp=EgQIAxAB'; // Upload date: This week
+  } else if (freshness === 'month') {
+    searchUrl += '&sp=EgQIBBAB'; // Upload date: This month
+  } else if (freshness === 'year') {
+    searchUrl += '&sp=EgQIBRAB'; // Upload date: This year
+  }
 
   const res = await fetch(searchUrl, {
     headers: {
@@ -1565,7 +1573,8 @@ async function scrapeMultiPlatformClips(
   topic: string,
   targetRatio: string,
   requestedPlatforms: string[],
-  totalCount: number
+  totalCount: number,
+  freshness: string = 'all'
 ) {
   const seenIds = new Set<string>();
   const allClips: any[] = [];
@@ -1643,7 +1652,8 @@ async function scrapeMultiPlatformClips(
           cfg.platform,
           cfg.author,
           seenIds,
-          countForQuery
+          countForQuery,
+          freshness
         );
         allClips.push(...batch);
         clipsForThisPlatform += batch.length;
@@ -1671,7 +1681,8 @@ async function scrapeMultiPlatformClips(
           cfg.platform,
           cfg.author,
           seenIds,
-          totalCount - allClips.length
+          totalCount - allClips.length,
+          freshness
         );
         allClips.push(...batch);
       } catch {}
@@ -1686,6 +1697,7 @@ app.get('/api/scrape', async (req, res) => {
   const topic = (req.query.topic as string) || 'oddly satisfying';
   const targetRatio = (req.query.target_ratio as string) || '9:16';
   const count = parseInt(req.query.count as string, 10) || 5;
+  const freshness = (req.query.freshness as string) || 'all';
   const platformsParam = (req.query.platforms as string) || 'youtube';
   const platforms = platformsParam
     .split(',')
@@ -1693,7 +1705,7 @@ app.get('/api/scrape', async (req, res) => {
     .filter(Boolean);
 
   try {
-    const cleanClips = await scrapeMultiPlatformClips(topic, targetRatio, platforms, count);
+    const cleanClips = await scrapeMultiPlatformClips(topic, targetRatio, platforms, count, freshness);
 
     return res.json({
       success: true,
@@ -1702,6 +1714,7 @@ app.get('/api/scrape', async (req, res) => {
         target_ratio: targetRatio,
         count: cleanClips.length,
         platforms,
+        freshness,
         scraped_at: Date.now(),
         videos: cleanClips,
       },

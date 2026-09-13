@@ -14,14 +14,22 @@ import {
   Archive,
   RefreshCw,
   ExternalLink,
-  Play
+  Play,
+  Clock,
+  Calendar
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import JSZip from 'jszip';
-import { AspectRatioType, ScrapedClip, SupportedPlatform } from '../types';
+import { AspectRatioType, FreshnessType, ScrapedClip, SupportedPlatform } from '../types';
 
 interface CleanTopicScraperProps {
-  onScrape: (topic: string, ratio: AspectRatioType, count: number, platforms: SupportedPlatform[]) => Promise<ScrapedClip[]>;
+  onScrape: (
+    topic: string, 
+    ratio: AspectRatioType, 
+    count: number, 
+    platforms: SupportedPlatform[],
+    freshness: FreshnessType
+  ) => Promise<ScrapedClip[]>;
   isScraping: boolean;
   statusMessage: string;
   progressPercent: number;
@@ -35,19 +43,50 @@ export const CleanTopicScraper: React.FC<CleanTopicScraperProps> = ({
 }) => {
   const [topic, setTopic] = useState('');
   const [targetRatio, setTargetRatio] = useState<AspectRatioType>('9:16');
+  const [freshness, setFreshness] = useState<FreshnessType>('all');
   const [clipCount, setClipCount] = useState<number>(5);
   const [results, setResults] = useState<ScrapedClip[]>([]);
   const [isZipping, setIsZipping] = useState(false);
   const [zipProgress, setZipProgress] = useState(0);
   const [downloadingClipId, setDownloadingClipId] = useState<string | null>(null);
+  const [singleDownloadProgress, setSingleDownloadProgress] = useState<number>(0);
 
   const handleDownloadSingleClip = async (clip: ScrapedClip) => {
     if (downloadingClipId) return;
     setDownloadingClipId(clip.id);
+    setSingleDownloadProgress(0);
+    setScrapeError(null);
     try {
       const res = await fetch(clip.video_url);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const blob = await res.blob();
+
+      let blob: Blob;
+      const contentLength = res.headers.get('content-length');
+      const totalBytes = contentLength ? parseInt(contentLength, 10) : 0;
+
+      if (res.body && totalBytes > 0) {
+        const reader = res.body.getReader();
+        const chunks: Uint8Array[] = [];
+        let receivedBytes = 0;
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (value) {
+            chunks.push(value);
+            receivedBytes += value.length;
+            const pct = Math.min(99, Math.round((receivedBytes / totalBytes) * 100));
+            setSingleDownloadProgress(pct);
+          }
+        }
+        setSingleDownloadProgress(100);
+        blob = new Blob(chunks, { type: 'video/mp4' });
+      } else {
+        setSingleDownloadProgress(40);
+        blob = await res.blob();
+        setSingleDownloadProgress(100);
+      }
+
       const blobUrl = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = blobUrl;
@@ -62,6 +101,7 @@ export const CleanTopicScraper: React.FC<CleanTopicScraperProps> = ({
       setScrapeError(`Download failed: ${e?.message || 'Please check your connection and try again'}`);
     } finally {
       setDownloadingClipId(null);
+      setSingleDownloadProgress(0);
     }
   };
 
@@ -89,7 +129,7 @@ export const CleanTopicScraper: React.FC<CleanTopicScraperProps> = ({
     if (!topic.trim() || isScraping) return;
     setScrapeError(null);
     try {
-      const clips = await onScrape(topic.trim(), targetRatio, clipCount, selectedPlatforms);
+      const clips = await onScrape(topic.trim(), targetRatio, clipCount, selectedPlatforms, freshness);
       if (!clips || clips.length === 0) {
         setScrapeError("No clean viral clips found for this topic. Try broader search terms (e.g. backflip, parkour, gym fails).");
         return;
@@ -216,98 +256,144 @@ export const CleanTopicScraper: React.FC<CleanTopicScraperProps> = ({
         </div>
 
         {/* Filters Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           
           {/* 1. Target Aspect Ratio */}
           <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">
-              Target Aspect Ratio
+            <label className="block text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2 flex items-center gap-1.5">
+              <Smartphone className="w-3.5 h-3.5 text-emerald-500" />
+              <span>Target Aspect Ratio</span>
             </label>
-            <div className="grid grid-cols-3 gap-1.5 p-1 bg-zinc-100 dark:bg-zinc-950/70 rounded-xl border border-zinc-200 dark:border-zinc-800">
-              <button
-                type="button"
-                onClick={() => setTargetRatio('9:16')}
-                className={`flex items-center justify-center gap-1.5 py-2 px-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                  targetRatio === '9:16'
-                    ? 'bg-emerald-500 text-white shadow-md'
-                    : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
-                }`}
-              >
-                <Smartphone className="w-3.5 h-3.5" />
-                <span>9:16 Vertical</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setTargetRatio('16:9')}
-                className={`flex items-center justify-center gap-1.5 py-2 px-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                  targetRatio === '16:9'
-                    ? 'bg-emerald-500 text-white shadow-md'
-                    : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
-                }`}
-              >
-                <Monitor className="w-3.5 h-3.5" />
-                <span>16:9 Wide</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setTargetRatio('unknown')}
-                className={`flex items-center justify-center gap-1.5 py-2 px-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                  targetRatio === 'unknown'
-                    ? 'bg-emerald-500 text-white shadow-md'
-                    : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
-                }`}
-              >
-                <Layers className="w-3.5 h-3.5" />
-                <span>Any Ratio</span>
-              </button>
-            </div>
-          </div>
-
-          {/* 2. Number of Clean Clips */}
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">
-              Clean Clips Count
-            </label>
-            <div className="grid grid-cols-4 gap-1.5 p-1 bg-zinc-100 dark:bg-zinc-950/70 rounded-xl border border-zinc-200 dark:border-zinc-800">
-              {[3, 5, 10, 20].map((num) => (
-                <button
-                  key={num}
-                  type="button"
-                  onClick={() => setClipCount(num)}
-                  className={`py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                    clipCount === num
-                      ? 'bg-emerald-500 text-white shadow-md'
-                      : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
-                  }`}
-                >
-                  {num} Clips
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* 3. Platform Sources */}
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">
-              Target Sources
-            </label>
-            <div className="flex flex-wrap gap-1.5">
-              {(['youtube', 'tiktok', 'instagram', 'pinterest', 'reddit'] as SupportedPlatform[]).map((p) => {
-                const isChecked = selectedPlatforms.includes(p);
+            <div className="grid grid-cols-3 gap-1.5">
+              {[
+                { value: '9:16', label: '9:16', tag: 'Vertical', icon: Smartphone },
+                { value: '16:9', label: '16:9', tag: 'Wide', icon: Monitor },
+                { value: 'unknown', label: 'Any', tag: 'Ratio', icon: Layers },
+              ].map(({ value, label, tag, icon: Icon }) => {
+                const isSelected = targetRatio === value;
                 return (
                   <button
-                    key={p}
+                    key={value}
                     type="button"
-                    onClick={() => togglePlatform(p)}
-                    className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold capitalize border transition-all cursor-pointer ${
-                      isChecked
-                        ? 'bg-emerald-500/20 border-emerald-500 text-emerald-600 dark:text-emerald-400'
-                        : 'bg-zinc-100 dark:bg-zinc-950/50 border-zinc-200 dark:border-zinc-800 text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200'
+                    onClick={() => setTargetRatio(value as AspectRatioType)}
+                    className={`flex flex-col items-center justify-center py-2 px-1 rounded-xl text-xs border transition-all cursor-pointer ${
+                      isSelected
+                        ? 'bg-emerald-500 hover:bg-emerald-400 border-emerald-500 text-white font-bold shadow-md shadow-emerald-500/25'
+                        : 'border-emerald-500/30 dark:border-emerald-500/25 bg-emerald-500/[0.04] dark:bg-emerald-500/[0.08] hover:border-emerald-500/50 hover:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-semibold'
                     }`}
                   >
-                    {p === 'youtube' ? 'YouTube Shorts' : p === 'tiktok' ? 'TikTok' : p === 'instagram' ? 'Instagram' : p === 'pinterest' ? 'Pinterest' : p === 'reddit' ? 'Reddit' : p}
+                    <div className="flex items-center gap-1">
+                      <Icon className={`w-3.5 h-3.5 ${isSelected ? 'text-white' : 'text-emerald-500'}`} />
+                      <span>{label}</span>
+                    </div>
+                    <span className={`text-[10px] mt-0.5 ${isSelected ? 'text-emerald-100 dark:text-zinc-200' : 'text-zinc-500 dark:text-zinc-400'}`}>
+                      {tag}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 2. Upload Date / Freshness */}
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2 flex items-center gap-1.5">
+              <Clock className="w-3.5 h-3.5 text-emerald-500" />
+              <span>Upload Freshness</span>
+            </label>
+            <div className="grid grid-cols-2 gap-1.5">
+              {[
+                { value: 'all', label: 'All-Time', tag: 'Viral' },
+                { value: 'week', label: 'Past Week', tag: 'New' },
+                { value: 'month', label: 'Past Month', tag: 'Recent' },
+                { value: 'year', label: 'Past Year', tag: '12 Mo' },
+              ].map(({ value, label, tag }) => {
+                const isSelected = freshness === value;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setFreshness(value as FreshnessType)}
+                    className={`flex items-center justify-between px-2.5 py-2 rounded-xl text-xs border transition-all cursor-pointer ${
+                      isSelected
+                        ? 'bg-emerald-500 hover:bg-emerald-400 border-emerald-500 text-white font-bold shadow-md shadow-emerald-500/25'
+                        : 'border-emerald-500/30 dark:border-emerald-500/25 bg-emerald-500/[0.04] dark:bg-emerald-500/[0.08] hover:border-emerald-500/50 hover:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-semibold'
+                    }`}
+                  >
+                    <span>{label}</span>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-md ${
+                      isSelected ? 'bg-emerald-600/70 text-emerald-100' : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                    }`}>
+                      {tag}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 3. Number of Clean Clips */}
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2 flex items-center gap-1.5">
+              <Layers className="w-3.5 h-3.5 text-emerald-500" />
+              <span>Clean Clips Count</span>
+            </label>
+            <div className="grid grid-cols-4 gap-1.5">
+              {[3, 5, 10, 20].map((num) => {
+                const isSelected = clipCount === num;
+                return (
+                  <button
+                    key={num}
+                    type="button"
+                    onClick={() => setClipCount(num)}
+                    className={`flex flex-col items-center justify-center py-2 px-1 rounded-xl text-xs border transition-all cursor-pointer ${
+                      isSelected
+                        ? 'bg-emerald-500 hover:bg-emerald-400 border-emerald-500 text-white font-bold shadow-md shadow-emerald-500/25'
+                        : 'border-emerald-500/30 dark:border-emerald-500/25 bg-emerald-500/[0.04] dark:bg-emerald-500/[0.08] hover:border-emerald-500/50 hover:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-semibold'
+                    }`}
+                  >
+                    <span className="text-xs font-bold">{num}</span>
+                    <span className={`text-[10px] ${isSelected ? 'text-emerald-100 dark:text-zinc-200' : 'text-zinc-500 dark:text-zinc-400'}`}>
+                      Clips
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 4. Platform Sources */}
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2 flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-emerald-500" />
+              <span>Target Sources</span>
+            </label>
+            <div className="flex flex-wrap gap-1.5">
+              {[
+                { value: 'youtube', label: 'YouTube', tag: 'Shorts' },
+                { value: 'tiktok', label: 'TikTok', tag: 'Viral' },
+                { value: 'instagram', label: 'Instagram', tag: 'Reels' },
+                { value: 'pinterest', label: 'Pinterest', tag: 'Pins' },
+                { value: 'reddit', label: 'Reddit', tag: 'Clips' },
+              ].map(({ value, label, tag }) => {
+                const isChecked = selectedPlatforms.includes(value as SupportedPlatform);
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => togglePlatform(value as SupportedPlatform)}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs border transition-all cursor-pointer ${
+                      isChecked
+                        ? 'bg-emerald-500 hover:bg-emerald-400 border-emerald-500 text-white font-bold shadow-md shadow-emerald-500/25'
+                        : 'border-emerald-500/30 dark:border-emerald-500/25 bg-emerald-500/[0.04] dark:bg-emerald-500/[0.08] hover:border-emerald-500/50 hover:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-semibold'
+                    }`}
+                  >
+                    <span>{label}</span>
+                    <span className={`text-[10px] px-1 py-0.2 rounded ${
+                      isChecked ? 'bg-emerald-600/70 text-emerald-100' : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                    }`}>
+                      {tag}
+                    </span>
                   </button>
                 );
               })}
@@ -464,12 +550,18 @@ export const CleanTopicScraper: React.FC<CleanTopicScraperProps> = ({
                       type="button"
                       onClick={() => handleDownloadSingleClip(clip)}
                       disabled={downloadingClipId === clip.id}
-                      className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-white font-bold text-xs shadow-md shadow-emerald-500/20 transition-all active:scale-95 cursor-pointer"
+                      className="flex-1 relative overflow-hidden flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-90 text-white font-bold text-xs shadow-md shadow-emerald-500/20 transition-all active:scale-95 cursor-pointer"
                     >
                       {downloadingClipId === clip.id ? (
                         <>
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          <span>Downloading MP4...</span>
+                          <div 
+                            className="absolute inset-0 bg-emerald-600/90 transition-all duration-150"
+                            style={{ width: `${singleDownloadProgress}%` }}
+                          />
+                          <span className="relative z-10 flex items-center gap-1.5">
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
+                            <span>Downloading ({singleDownloadProgress}%)...</span>
+                          </span>
                         </>
                       ) : (
                         <>

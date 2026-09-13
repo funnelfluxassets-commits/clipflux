@@ -10,7 +10,8 @@ import {
   CheckCircle2, 
   ChevronDown,
   Layers,
-  Crown
+  Crown,
+  Video
 } from 'lucide-react';
 import { UserProfile } from '../types';
 
@@ -51,20 +52,12 @@ export const Navbar: React.FC<NavbarProps> = ({
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-18 flex items-center justify-between gap-4">
         
         {/* Left: Brand Logo & Name */}
-        <div className="flex items-center gap-3 cursor-pointer select-none" onClick={onLogoClick}>
+        <div className="flex items-center gap-3 cursor-pointer select-none group" onClick={onLogoClick}>
           <div className="relative flex items-center justify-center">
-            <img 
-              src="/logo-icon.png" 
-              alt="ClipFlux Logo" 
-              className="w-10 h-10 object-contain rounded-xl drop-shadow-[0_0_12px_rgba(16,185,129,0.4)]"
-              onError={(e) => {
-                // Fallback icon if logo image not found
-                e.currentTarget.style.display = 'none';
-              }}
-            />
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-400 flex items-center justify-center text-white font-black text-xl shadow-lg shadow-emerald-500/20" style={{ display: 'none' }}>
-              CF
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 via-emerald-600 to-teal-700 flex items-center justify-center shadow-lg shadow-emerald-500/25 group-hover:scale-105 group-hover:shadow-emerald-500/40 transition-all duration-200 border border-emerald-400/30">
+              <Video className="w-5 h-5 text-white fill-white/20 stroke-[2.2]" />
             </div>
+            <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400 border-2 border-white dark:border-zinc-950 animate-pulse" />
           </div>
           <div className="flex flex-col">
             <div className="flex items-center gap-1.5">

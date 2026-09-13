@@ -9,6 +9,7 @@ export type SupportedPlatform =
   | 'unknown';
 
 export type AspectRatioType = '9:16' | '16:9' | '1:1' | 'unknown';
+export type FreshnessType = 'all' | 'week' | 'month' | 'year';
 
 export interface DownloadOption {
   id: string;
