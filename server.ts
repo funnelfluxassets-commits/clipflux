@@ -1099,11 +1099,6 @@ app.get('/api/download', async (req, res) => {
         }
       }
 
-      // 2. YouTube or other platform audio extraction via yt-dlp
-      const ytdlpBin = await ensureYtDlp();
-      const tempId = `audio_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-      const tmpFile = path.join('/tmp', tempId);
-
       let ytUrl = targetUrl;
       let extraArgs: string[] = [];
 
@@ -1145,10 +1140,15 @@ app.get('/api/download', async (req, res) => {
         ];
       } else {
         extraArgs = [
-          '-f', 'ba/ba*/b/bestaudio/best',
+          '-f', 'ba/b/bestaudio/best',
           ...ensureInstagramCookies(),
         ];
       }
+
+      // 2. YouTube or other platform audio extraction via local yt-dlp fallback
+      const ytdlpBin = await ensureYtDlp();
+      const tempId = `audio_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const tmpFile = path.join('/tmp', tempId);
 
       const ffmpegArgs = ffmpegBin === 'ffmpeg' ? [] : ['--ffmpeg-location', ffmpegBin];
       const ytdlpArgs = [
@@ -1239,11 +1239,6 @@ app.get('/api/download', async (req, res) => {
       }
     }
 
-    // 2. YouTube or other platform video muxing via yt-dlp + ffmpeg
-    const ytdlpBin = await ensureYtDlp();
-    const tempId = `dl_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    const tmpFile = path.join('/tmp', tempId);
-
     let ytUrl = targetUrl;
     let extraArgs: string[] = [];
 
@@ -1297,6 +1292,11 @@ app.get('/api/download', async (req, res) => {
         ...ensureInstagramCookies(),
       ];
     }
+
+    // 2. Local yt-dlp fallback only if TubeDownloader proxy didn't handle it
+    const ytdlpBin = await ensureYtDlp();
+    const tempId = `dl_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const tmpFile = path.join('/tmp', tempId);
 
     const ffmpegArgs = ffmpegBin === 'ffmpeg' ? [] : ['--ffmpeg-location', ffmpegBin];
     const ytdlpArgs = [

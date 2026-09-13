@@ -57,9 +57,9 @@ export const CleanTopicScraper: React.FC<CleanTopicScraperProps> = ({
       a.click();
       document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(blobUrl), 4000);
-    } catch (e) {
+    } catch (e: any) {
       console.error('Download error:', e);
-      window.location.href = clip.video_url;
+      setScrapeError(`Download failed: ${e?.message || 'Please check your connection and try again'}`);
     } finally {
       setDownloadingClipId(null);
     }
