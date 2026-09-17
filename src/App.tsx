@@ -141,33 +141,98 @@ export const App: React.FC = () => {
     setFetchError(null);
     try {
       const filename = `${customFilename}.${option.extension}`;
+      const isYouTube =
+        mediaResult?.platform === 'youtube' ||
+        (mediaResult?.originalUrl &&
+          (mediaResult.originalUrl.includes('youtube.com') || mediaResult.originalUrl.includes('youtu.be')));
 
-      // Only direct client fetch IF it's a thumbnail/video OR if it's already a native MP3 url (like TikTok sound)
+      // 1. Direct in-browser download for non-YouTube media whenever directUrl is available (0 MB Vercel bandwidth)
       const isNativeMp3 = option.type === 'audio' && option.directUrl?.toLowerCase().includes('.mp3');
+      const canDirectDownload =
+        !!option.directUrl &&
+        !isYouTube &&
+        (option.type === 'thumbnail' || option.type === 'video' || isNativeMp3);
 
-      if (option.directUrl && (option.type === 'thumbnail' || isNativeMp3)) {
+      if (canDirectDownload) {
         try {
-          const response = await fetch(option.directUrl);
-          if (response.ok) {
-            const blob = await response.blob();
-            const blobUrl = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = blobUrl;
-            a.download = filename;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            setTimeout(() => window.URL.revokeObjectURL(blobUrl), 3000);
-            setDownloadingId(null);
-            setDownloadProgress(null);
-            return;
+          setDownloadProgress('Direct downloading...');
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), 4500);
+          const directRes = await fetch(option.directUrl!, {
+            signal: controller.signal,
+            headers: { Accept: '*/*' },
+          });
+          clearTimeout(timer);
+
+          if (directRes.ok) {
+            const contentLength = directRes.headers.get('content-length');
+            const totalBytes = contentLength ? parseInt(contentLength, 10) : 0;
+            let loadedBytes = 0;
+
+            const reader = directRes.body?.getReader();
+            const chunks: Uint8Array[] = [];
+
+            if (reader) {
+              setDownloadProgress(totalBytes > 0 ? '0%' : 'Saving...');
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                if (value) {
+                  chunks.push(value);
+                  loadedBytes += value.length;
+                  if (totalBytes > 0) {
+                    const percent = Math.min(99, Math.round((loadedBytes / totalBytes) * 100));
+                    setDownloadProgress(`${percent}%`);
+                  } else {
+                    const mb = (loadedBytes / (1024 * 1024)).toFixed(1);
+                    setDownloadProgress(`${mb} MB`);
+                  }
+                }
+              }
+            }
+
+            setDownloadProgress('Saving...');
+            const defaultType =
+              option.type === 'audio'
+                ? 'audio/mpeg'
+                : option.type === 'thumbnail'
+                ? 'image/jpeg'
+                : 'video/mp4';
+            const contentType = directRes.headers.get('content-type') || defaultType;
+            const blob =
+              chunks.length > 0 ? new Blob(chunks, { type: contentType }) : await directRes.blob();
+
+            // Validate that the blob is an actual binary media file and not an HTML error or empty response
+            const isValidMedia =
+              option.type === 'thumbnail'
+                ? blob.size > 1000
+                : blob.type.includes('video') ||
+                  blob.type.includes('audio') ||
+                  blob.type.includes('octet-stream') ||
+                  blob.size > 100000;
+
+            if (isValidMedia) {
+              const blobUrl = window.URL.createObjectURL(blob);
+              const tempLink = document.createElement('a');
+              tempLink.href = blobUrl;
+              tempLink.download = filename;
+              document.body.appendChild(tempLink);
+              tempLink.click();
+              document.body.removeChild(tempLink);
+              setTimeout(() => window.URL.revokeObjectURL(blobUrl), 4000);
+
+              setDownloadingId(null);
+              setDownloadProgress(null);
+              return;
+            }
           }
-        } catch {
-          // Direct fetch fallback to server proxy
+        } catch (directErr) {
+          console.info('[ClipFlux] Direct browser download blocked/bypassed, switching to Vercel fallback:', directErr);
         }
       }
 
-      // Stream download or MP3 conversion via server endpoint using in-browser fetch (Zero white-screen navigation)
+      // 2. Fallback for blocked CORS or YouTube: Stream download via server endpoint
+      setDownloadProgress('Connecting...');
       const streamParam = option.directUrl ? `&streamUrl=${encodeURIComponent(option.directUrl)}` : '';
       const downloadEndpoint = `/api/download?url=${encodeURIComponent(mediaResult?.originalUrl || '')}${streamParam}&format=${option.id}&filename=${encodeURIComponent(filename)}`;
 

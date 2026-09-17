@@ -19,6 +19,7 @@
     "express": "^4.21.2",
     "firebase": "^12.18.0",
     "firebase-admin": "^14.3.0",
+    "jpeg-js": "^0.4.4",
     "jszip": "^3.10.1",
     "lucide-react": "^0.546.0",
     "react": "^19.0.1",

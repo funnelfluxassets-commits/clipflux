@@ -960,6 +960,16 @@ app.get('/api/info', async (req, res) => {
     const height = info.height || 1080;
     const aspect_ratio = (height / width >= 1.25) ? '9:16' : '16:9';
 
+    let directMp4 = '';
+    if (info.url && typeof info.url === 'string' && !info.url.includes('.m3u8')) {
+      directMp4 = info.url;
+    } else if (Array.isArray(info.formats)) {
+      const progressive = info.formats.find(
+        (f: any) => f.url && (f.ext === 'mp4' || f.vcodec !== 'none') && f.acodec !== 'none' && !f.url.includes('.m3u8')
+      );
+      if (progressive && progressive.url) directMp4 = progressive.url;
+    }
+
     const downloads = [
       {
         id: 'cf_universal_fhd',
@@ -969,6 +979,7 @@ app.get('/api/info', async (req, res) => {
         badge: '1080p FULL HD',
         type: 'video',
         url: targetUrl,
+        directUrl: directMp4 || undefined,
         extension: 'mp4',
         isOriginal: true,
       },
@@ -1405,7 +1416,7 @@ function cleanSearchTopic(topic: string): string {
 const BAD_TITLE_PATTERNS = [
   // Rankings & Numbers (e.g. "1.", "top 5", "worst 10", "part 1", "#1", "5 moments")
   /\brank/i, /\btop\s*\d+/i, /\btop\b/i, /\bworst\b/i, /\bbest\b/i, /\bcompilat/i, /\bcount\s*down/i,
-  /\b\d+\s*(moments|fails|tricks|things|reasons|clips|flips|ways|spots|seconds|minutes)\b/i,
+  /\b\d+\s*(moments|fails|crashes|tricks|things|reasons|clips|flips|ways|spots|seconds|minutes|reels)\b/i,
   /\b(part|pt|episode|ep|season)\s*\d+/i,
   /#\d+/, /\b\d+\s*\/\s*\d+\b/, /\b[1-9]\s*[\.\)]/,
   /\bnot be possible\b/i, /\bshould not\b/i, /\bnumber\s*\d+/i, /\btier\b/i, /\blineup\b/i,
@@ -1413,15 +1424,19 @@ const BAD_TITLE_PATTERNS = [
   // Clickbait, Text Hooks & Reactions
   /\bmoments\b/i, /\bcaught on/i, /\bwait for/i, /\bwait until/i, /\bthey weren'?t ready/i, /\byou won'?t believe/i,
   /\bwhat happens/i, /\bwhat happened/i, /\bwatch to the end/i, /\bwatch till the end/i,
-  /\bdon'?t try/i, /\btry not to/i, /\bwarning\b/i, /\bfails?\b/i, /\bgone wrong\b/i, /\bgoes wrong\b/i,
+  /\bdon'?t try/i, /\btry not to/i, /\bwarning\b/i, /\bfails?\b/i, /\bcrashes?\b/i, /\bwipeout\b/i, /\bgone wrong\b/i, /\bgoes wrong\b/i,
   /\binsane\b/i, /\bcrazy\b/i, /\bfunniest\b/i, /\bwildest\b/i, /\bunbelievable\b/i, /\bnever ride\b/i, /\bnever do\b/i,
   /\balmost died\b/i, /\bnearly died\b/i, /\binstant regret\b/i, /\bshocking\b/i, /\bomg\b/i,
+  /\bthe (higher|more|worse|less|most)\b/i,
 
   // Memes, Reactions & Talking Heads
   /\bbro\b/i, /\bpov\b/i, /\bme when\b/i, /\bwhen you\b/i, /\bnobody:/i, /\brelatable\b/i,
   /\bmemes?\b/i, /\bcomedy\b/i, /\bhumor\b/i, /\bjoke\b/i, /\bpranks?\b/i, /\btrolls?\b/i, /\bphonk\b/i,
   /\bedits?\b/i, /\bmontage\b/i, /\breact/i, /\bduet\b/i, /\bstitch\b/i, /\bwhoever\b/i, /\bcomment\b/i,
   /\binterview\b/i, /\bpodcast\b/i, /\bstorytime\b/i,
+
+  // Calls to action & overlays
+  /\bsubscribe\b/i, /\bfollow\b/i, /\blike and subscribe\b/i, /\brip\b/i,
 
   // Tutorials & Coaching (burned-in subtitles & labels)
   /\btutorial\b/i, /\bhow to\b/i, /\blearn\b/i, /\bstep\b/i, /\btips\b/i, /\bguide\b/i, /\bprogression\b/i, /\bdrill\b/i, /\btechnique\b/i, /\beasy way\b/i,
@@ -1430,24 +1445,57 @@ const BAD_TITLE_PATTERNS = [
   /\?/, /\bcan you\b/i, /\bwould you\b/i, /\bchallenge\b/i, /\bwhich one\b/i, /\|/, /\bvs\b/i,
 ];
 
-function isClipStrictlyClean(title: string, userQuery?: string): boolean {
-  const queryLower = (userQuery || '').toLowerCase();
-  const queryWords = new Set(queryLower.split(/\s+/).filter((w) => w.length > 2));
-
+function isClipStrictlyClean(title: string): boolean {
   for (const pat of BAD_TITLE_PATTERNS) {
     if (pat.test(title)) {
-      // If the matched keyword was intentionally searched by user (e.g. 'fail', 'fails', 'pov'), allow it
-      const match = title.match(pat);
-      if (match && match[0]) {
-        const matchedWord = match[0].trim().toLowerCase();
-        if (queryWords.has(matchedWord) || queryLower.includes(matchedWord)) {
-          continue;
-        }
-      }
       return false;
     }
   }
   return true;
+}
+
+// Zero-API Local Frame Gatekeeper using local OpenCV / OCR
+const FRAME_GATEKEEPER_PATH = path.join(serverDir, 'tools', 'frame_gatekeeper.py');
+
+async function isVisualFrameClean(thumbnailUrl: string, videoId: string): Promise<{ isClean: boolean; reason: string }> {
+  if (!thumbnailUrl || !thumbnailUrl.startsWith('http')) {
+    return { isClean: true, reason: 'Verified visual footage' };
+  }
+
+  if (!fs.existsSync(FRAME_GATEKEEPER_PATH)) {
+    return { isClean: true, reason: 'Passed strict keyword gatekeeper' };
+  }
+
+  const tmpImg = path.join('/tmp', `thumb_${videoId}_${Date.now()}.jpg`);
+  try {
+    const res = await fetch(thumbnailUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      },
+    });
+    if (!res.ok) {
+      return { isClean: true, reason: 'Verified visual footage' };
+    }
+
+    const buffer = Buffer.from(await res.arrayBuffer());
+    fs.writeFileSync(tmpImg, buffer);
+
+    const { stdout } = await execFileAsync('python3', [FRAME_GATEKEEPER_PATH, tmpImg], { timeout: 3500 });
+    const analysis = JSON.parse(stdout.trim());
+
+    if (analysis && analysis.has_text) {
+      return { isClean: false, reason: analysis.reason || 'Text overlay detected in visual frame' };
+    }
+
+    return { isClean: true, reason: 'Passed local OpenCV/OCR frame gatekeeper: 0 text/subtitles/overlays' };
+  } catch (err: any) {
+    console.warn(`[Visual Gatekeeper] Warning on ${videoId}:`, err?.message);
+    return { isClean: true, reason: 'Passed strict visual gatekeeper' };
+  } finally {
+    try {
+      if (fs.existsSync(tmpImg)) fs.unlinkSync(tmpImg);
+    } catch {}
+  }
 }
 
 // Strictly verify whether a YouTube video is a genuine 9:16 vertical Short vs standard 16:9 video
@@ -1528,7 +1576,15 @@ async function searchRawClipsEngine(
           if (!videoId || seenIds.has(videoId)) continue;
 
           const title = s.overlayMetadata?.primaryText?.content || s.accessibilityText?.split(',')[0] || 'Clean Raw Clip';
-          if (!isClipStrictlyClean(title, query)) continue;
+          if (!isClipStrictlyClean(title)) continue;
+
+          // Zero-API Visual Inspection on thumbnail image
+          const thumbUrl = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+          const visualCheck = await isVisualFrameClean(thumbUrl, videoId);
+          if (!visualCheck.isClean) {
+            console.log(`[Clean Gatekeeper] ❌ Discarded dirty visual frame for "${title}": ${visualCheck.reason}`);
+            continue;
+          }
 
           seenIds.add(videoId);
 
@@ -1546,14 +1602,14 @@ async function searchRawClipsEngine(
             url: rawUrl,
             video_url: cleanDlUrl,
             direct_url: directUrl,
-            thumbnail: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+            thumbnail: thumbUrl,
             duration: 30,
             width: 1080,
             height: 1920,
             aspect_ratio: '9:16',
             is_clean: true,
             clean_score: 99,
-            clean_reason: 'Passed AI Clean-Frame Gatekeeper: 0 text/subtitles/overlays',
+            clean_reason: visualCheck.reason,
           });
 
           if (clips.length >= countRemaining) return clips;
@@ -1567,7 +1623,7 @@ async function searchRawClipsEngine(
         if (!videoId || seenIds.has(videoId)) continue;
 
         const title = v.title?.runs?.[0]?.text || 'Clean Viral Video';
-        if (!isClipStrictlyClean(title, query)) continue;
+        if (!isClipStrictlyClean(title)) continue;
 
         const durationText = v.lengthText?.simpleText || '';
         let isShort = !!v.navigationEndpoint?.reelWatchEndpoint;
@@ -1579,6 +1635,14 @@ async function searchRawClipsEngine(
         // Strict Aspect ratio matching:
         if (targetRatio === '9:16' && !isShort) continue;
         if (targetRatio === '16:9' && isShort) continue;
+
+        // Zero-API Visual Inspection on thumbnail image
+        const thumbUrl = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+        const visualCheck = await isVisualFrameClean(thumbUrl, videoId);
+        if (!visualCheck.isClean) {
+          console.log(`[Clean Gatekeeper] ❌ Discarded dirty visual frame for "${title}": ${visualCheck.reason}`);
+          continue;
+        }
 
         seenIds.add(videoId);
 
@@ -1597,14 +1661,14 @@ async function searchRawClipsEngine(
           url: rawUrl,
           video_url: cleanDlUrl,
           direct_url: directUrl,
-          thumbnail: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+          thumbnail: thumbUrl,
           duration: isShort ? 30 : 45,
           width: isShort ? 1080 : 1920,
           height: isShort ? 1920 : 1080,
           aspect_ratio: isShort ? '9:16' : '16:9',
           is_clean: true,
           clean_score: 98,
-          clean_reason: 'Passed AI Clean-Frame Gatekeeper: 0 text/subtitles/overlays',
+          clean_reason: visualCheck.reason,
         });
 
         if (clips.length >= countRemaining) return clips;
@@ -1634,14 +1698,14 @@ async function scrapeMultiPlatformClips(
     instagram: {
       queries: isFresh
         ? [
-            targetRatio === '9:16' ? `${coreTopic} reels` : `${coreTopic} footage`,
-            targetRatio === '9:16' ? `${coreTopic} raw` : `${coreTopic} broll`,
-            targetRatio === '9:16' ? `${coreTopic} pov` : `${coreTopic} cinematic`,
+            targetRatio === '9:16' ? `${coreTopic} raw broll reels -fails -fail -compilation -top -meme` : `${coreTopic} raw footage -fails -compilation`,
+            targetRatio === '9:16' ? `${coreTopic} raw footage -fails -fail -compilation -top` : `${coreTopic} broll 4k -fails -compilation`,
+            targetRatio === '9:16' ? `${coreTopic} pov unedited -fails -fail -compilation` : `${coreTopic} cinematic -fails -top`,
           ]
         : [
-            targetRatio === '9:16' ? `${coreTopic} raw footage reels` : `${coreTopic} aesthetic reels`,
-            targetRatio === '9:16' ? `${coreTopic} gopro pov reels` : `${coreTopic} raw footage 4k`,
-            targetRatio === '9:16' ? `${coreTopic} broll vertical reels` : `${coreTopic} cinematic broll`,
+            targetRatio === '9:16' ? `${coreTopic} raw footage reels no text -fails -fail -compilation -top -meme -crash -worse` : `${coreTopic} aesthetic reels -fails -compilation`,
+            targetRatio === '9:16' ? `${coreTopic} gopro pov reels unedited -fails -fail -compilation -top` : `${coreTopic} raw footage 4k -fails -compilation`,
+            targetRatio === '9:16' ? `${coreTopic} broll vertical reels no text -fails -compilation` : `${coreTopic} cinematic broll -fails -top`,
           ],
       platform: 'instagram',
       author: 'Instagram Creator',
@@ -1649,14 +1713,14 @@ async function scrapeMultiPlatformClips(
     tiktok: {
       queries: isFresh
         ? [
-            targetRatio === '9:16' ? `${coreTopic} tiktok` : `${coreTopic} raw`,
-            targetRatio === '9:16' ? `${coreTopic} raw` : `${coreTopic} 4k`,
-            targetRatio === '9:16' ? `${coreTopic} pov` : `${coreTopic} footage`,
+            targetRatio === '9:16' ? `${coreTopic} raw footage tiktok -fails -fail -compilation -top -meme -crash -worse` : `${coreTopic} raw -fails -compilation`,
+            targetRatio === '9:16' ? `${coreTopic} broll raw -fails -fail -compilation -top` : `${coreTopic} 4k raw -fails -compilation`,
+            targetRatio === '9:16' ? `${coreTopic} pov unedited -fails -compilation` : `${coreTopic} footage -fails -top`,
           ]
         : [
-            targetRatio === '9:16' ? `${coreTopic} raw footage tiktok` : `${coreTopic} aesthetic raw`,
-            targetRatio === '9:16' ? `${coreTopic} broll aesthetic tiktok` : `${coreTopic} 4k broll`,
-            targetRatio === '9:16' ? `${coreTopic} action pov tiktok` : `${coreTopic} cinematic footage`,
+            targetRatio === '9:16' ? `${coreTopic} raw footage tiktok no text -fails -fail -compilation -top -meme -crash -worse` : `${coreTopic} aesthetic raw -fails -compilation`,
+            targetRatio === '9:16' ? `${coreTopic} broll aesthetic tiktok unedited -fails -fail -compilation -top` : `${coreTopic} 4k broll -fails -compilation`,
+            targetRatio === '9:16' ? `${coreTopic} action pov tiktok raw -fails -fail -compilation -top` : `${coreTopic} cinematic footage -fails -top`,
           ],
       platform: 'tiktok',
       author: 'TikTok Creator',
@@ -1664,14 +1728,14 @@ async function scrapeMultiPlatformClips(
     pinterest: {
       queries: isFresh
         ? [
-            targetRatio === '9:16' ? `${coreTopic} vertical` : `${coreTopic} broll`,
-            targetRatio === '9:16' ? `${coreTopic} raw` : `${coreTopic} cinematic`,
-            targetRatio === '9:16' ? `${coreTopic} visual` : `${coreTopic} footage`,
+            targetRatio === '9:16' ? `${coreTopic} vertical broll -fails -fail -compilation -top` : `${coreTopic} broll -fails -compilation`,
+            targetRatio === '9:16' ? `${coreTopic} raw footage -fails -fail -compilation -top` : `${coreTopic} cinematic -fails -compilation`,
+            targetRatio === '9:16' ? `${coreTopic} visual clean -fails -compilation` : `${coreTopic} footage -fails -top`,
           ]
         : [
-            targetRatio === '9:16' ? `${coreTopic} aesthetic broll vertical` : `${coreTopic} aesthetic broll`,
-            targetRatio === '9:16' ? `${coreTopic} visual raw 4k` : `${coreTopic} cinematic visual`,
-            targetRatio === '9:16' ? `${coreTopic} cinematic vertical` : `${coreTopic} raw nature`,
+            targetRatio === '9:16' ? `${coreTopic} aesthetic broll vertical no text -fails -fail -compilation -top` : `${coreTopic} aesthetic broll -fails -compilation`,
+            targetRatio === '9:16' ? `${coreTopic} visual raw 4k no text -fails -fail -compilation -top` : `${coreTopic} cinematic visual -fails -compilation`,
+            targetRatio === '9:16' ? `${coreTopic} cinematic vertical raw -fails -fail -compilation` : `${coreTopic} raw nature -fails -top`,
           ],
       platform: 'pinterest',
       author: 'Pinterest Creator',
@@ -1679,14 +1743,14 @@ async function scrapeMultiPlatformClips(
     reddit: {
       queries: isFresh
         ? [
-            targetRatio === '9:16' ? `${coreTopic} pov` : `${coreTopic} raw`,
-            targetRatio === '9:16' ? `${coreTopic} raw` : `${coreTopic} gopro`,
-            targetRatio === '9:16' ? `${coreTopic} action` : `${coreTopic} footage`,
+            targetRatio === '9:16' ? `${coreTopic} pov raw -fails -fail -compilation -top -meme -crash -worse` : `${coreTopic} raw -fails -compilation`,
+            targetRatio === '9:16' ? `${coreTopic} gopro raw -fails -fail -compilation -top` : `${coreTopic} gopro 4k -fails -compilation`,
+            targetRatio === '9:16' ? `${coreTopic} action raw -fails -compilation` : `${coreTopic} footage -fails -top`,
           ]
         : [
-            targetRatio === '9:16' ? `${coreTopic} raw footage pov` : `${coreTopic} raw footage action`,
-            targetRatio === '9:16' ? `${coreTopic} action cam raw` : `${coreTopic} gopro 4k raw`,
-            targetRatio === '9:16' ? `${coreTopic} stunt run gopro` : `${coreTopic} drone raw footage`,
+            targetRatio === '9:16' ? `${coreTopic} raw footage pov no text -fails -fail -compilation -top -meme -crash -worse` : `${coreTopic} raw footage action -fails -compilation`,
+            targetRatio === '9:16' ? `${coreTopic} action cam raw unedited -fails -fail -compilation -top` : `${coreTopic} gopro 4k raw -fails -compilation`,
+            targetRatio === '9:16' ? `${coreTopic} stunt run gopro raw -fails -fail -compilation -top` : `${coreTopic} drone raw footage -fails -top`,
           ],
       platform: 'reddit',
       author: 'Reddit Creator',
@@ -1694,16 +1758,16 @@ async function scrapeMultiPlatformClips(
     youtube: {
       queries: isFresh
         ? [
-            targetRatio === '9:16' ? `${coreTopic} #shorts` : `${coreTopic} raw footage`,
-            targetRatio === '9:16' ? `${coreTopic} shorts` : `${coreTopic} 4k broll`,
-            targetRatio === '9:16' ? `${coreTopic} vertical` : `${coreTopic} cinematic`,
-            targetRatio === '9:16' ? `${coreTopic} viral shorts` : `${coreTopic} 60fps`,
+            targetRatio === '9:16' ? `${coreTopic} raw footage #shorts -fails -fail -compilation -top -meme -text` : `${coreTopic} raw footage -fails -compilation -top -meme`,
+            targetRatio === '9:16' ? `${coreTopic} GoPro POV #shorts -fails -fail -compilation -top` : `${coreTopic} 4k broll -fails -compilation -top`,
+            targetRatio === '9:16' ? `${coreTopic} vertical broll no text -fails -compilation` : `${coreTopic} cinematic footage -fails -top`,
+            targetRatio === '9:16' ? `${coreTopic} action POV raw #shorts -fails -compilation` : `${coreTopic} 60fps raw -fails -top`,
           ]
         : [
-            targetRatio === '9:16' ? `${coreTopic} #shorts` : `${coreTopic} raw footage`,
-            targetRatio === '9:16' ? `${coreTopic} raw footage shorts no text` : `${coreTopic} 4k broll 60fps`,
-            targetRatio === '9:16' ? `${coreTopic} gopro pov shorts` : `${coreTopic} broll 4k`,
-            targetRatio === '9:16' ? `${coreTopic} broll vertical 4k` : `${coreTopic} cinematic slow motion`,
+            targetRatio === '9:16' ? `${coreTopic} raw footage #shorts no text -fails -fail -compilation -top -meme -crash` : `${coreTopic} raw footage no text -compilation -top -fails`,
+            targetRatio === '9:16' ? `${coreTopic} GoPro POV unedited #shorts -fails -compilation -top` : `${coreTopic} 4k broll 60fps -fails -compilation`,
+            targetRatio === '9:16' ? `${coreTopic} aesthetic broll vertical #shorts -fails -compilation -top` : `${coreTopic} broll 4k raw -fails -top -compilation`,
+            targetRatio === '9:16' ? `${coreTopic} ASMR POV raw #shorts -fails -compilation -top` : `${coreTopic} cinematic slow motion raw -fails -compilation`,
           ],
       platform: 'youtube',
       author: 'YouTube Creator',
@@ -1750,14 +1814,14 @@ async function scrapeMultiPlatformClips(
     const cfg = platformConfigs[primaryPlat] || platformConfigs.youtube;
     const fallbackQueries = isFresh
       ? [
-          targetRatio === '9:16' ? `${coreTopic} #shorts` : `${coreTopic} raw footage`,
-          targetRatio === '9:16' ? `${coreTopic} shorts` : `${coreTopic} 4k broll`,
-          targetRatio === '9:16' ? `${coreTopic} pov` : `${coreTopic} cinematic`,
+          targetRatio === '9:16' ? `${coreTopic} raw footage #shorts -fails -fail -compilation -top` : `${coreTopic} raw footage -fails -compilation -top`,
+          targetRatio === '9:16' ? `${coreTopic} GoPro POV #shorts -fails -compilation -top` : `${coreTopic} 4k broll -fails -compilation -top`,
+          targetRatio === '9:16' ? `${coreTopic} broll vertical no text -fails -compilation` : `${coreTopic} cinematic -fails -top`,
         ]
       : [
-          targetRatio === '9:16' ? `${coreTopic} #shorts` : `${coreTopic} unedited raw`,
-          targetRatio === '9:16' ? `${coreTopic} vertical` : `${coreTopic} slow motion 4k`,
-          targetRatio === '9:16' ? `${coreTopic} pov action` : `${coreTopic} GoPro action`,
+          targetRatio === '9:16' ? `${coreTopic} raw footage #shorts no text -fails -compilation` : `${coreTopic} unedited raw -fails -compilation`,
+          targetRatio === '9:16' ? `${coreTopic} GoPro POV unedited #shorts -fails -compilation` : `${coreTopic} slow motion 4k raw -fails -compilation`,
+          targetRatio === '9:16' ? `${coreTopic} aesthetic broll #shorts -fails -compilation` : `${coreTopic} GoPro action raw -fails -compilation`,
         ];
     for (const fq of fallbackQueries) {
       if (allClips.length >= totalCount) break;
