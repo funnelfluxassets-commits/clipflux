@@ -24,6 +24,8 @@ interface ResultCardProps {
   onDownload: (option: DownloadOption, customFilename: string) => Promise<void> | void;
   downloadingId: string | null;
   downloadProgress?: string | null;
+  isRefreshing?: boolean;
+  globalCustomName?: string;
 }
 
 export const ResultCard: React.FC<ResultCardProps> = ({
@@ -31,6 +33,8 @@ export const ResultCard: React.FC<ResultCardProps> = ({
   onDownload,
   downloadingId,
   downloadProgress,
+  isRefreshing,
+  globalCustomName,
 }) => {
   const [copiedCaption, setCopiedCaption] = useState(false);
   const [downloadSuccessId, setDownloadSuccessId] = useState<string | null>(null);
@@ -62,8 +66,23 @@ export const ResultCard: React.FC<ResultCardProps> = ({
   const presetCaptionOnly = useMemo(() => titleSlug, [titleSlug]);
   const presetCreatorId = useMemo(() => `${authorSlug}_${media.id}`, [authorSlug, media.id]);
 
-  const [activePreset, setActivePreset] = useState<'author_title' | 'title_only' | 'author_id' | 'custom'>('author_title');
-  const [customFilename, setCustomFilename] = useState<string>(presetCreatorCaption);
+  const [activePreset, setActivePreset] = useState<'author_title' | 'title_only' | 'author_id' | 'custom'>(() => {
+    return (globalCustomName && globalCustomName.trim()) ? 'custom' : 'author_title';
+  });
+  const [customFilename, setCustomFilename] = useState<string>(() => {
+    return (globalCustomName && globalCustomName.trim()) ? globalCustomName.trim() : presetCreatorCaption;
+  });
+
+  // Keep custom filename synchronized when globalCustomName or media changes
+  React.useEffect(() => {
+    if (globalCustomName && globalCustomName.trim()) {
+      setCustomFilename(globalCustomName.trim());
+      setActivePreset('custom');
+    } else {
+      setCustomFilename(presetCreatorCaption);
+      setActivePreset('author_title');
+    }
+  }, [globalCustomName, presetCreatorCaption, media.id]);
 
   const handleSelectPreset = (type: 'author_title' | 'title_only' | 'author_id') => {
     setActivePreset(type);
@@ -87,8 +106,21 @@ export const ResultCard: React.FC<ResultCardProps> = ({
     ((media.height || 0) > (media.width || 0) && (media.height || 0) > 0);
 
   return (
-    <div className="w-full max-w-4xl mx-auto mt-6 bg-white dark:bg-zinc-900/95 rounded-3xl p-4 sm:p-7 shadow-2xl border border-zinc-200 dark:border-zinc-800 transition-all space-y-6 animate-in fade-in slide-in-from-top-3">
+    <div className="relative w-full max-w-4xl mx-auto mt-6 bg-white dark:bg-zinc-900/95 rounded-3xl p-4 sm:p-7 shadow-2xl border border-zinc-200 dark:border-zinc-800 transition-all space-y-6 animate-in fade-in slide-in-from-top-3">
       
+      {/* Non-intrusive Refreshing Overlay when a new URL is fetching */}
+      {isRefreshing && (
+        <div className="absolute inset-0 bg-white/80 dark:bg-zinc-950/80 backdrop-blur-[2px] rounded-3xl z-30 flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-200">
+          <div className="flex items-center gap-2.5 px-4 py-2.5 rounded-2xl bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 shadow-2xl border border-emerald-500/40">
+            <Loader2 className="w-4 h-4 text-emerald-400 dark:text-emerald-600 animate-spin" />
+            <span className="text-xs sm:text-sm font-bold">Extracting new media...</span>
+          </div>
+          <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-2 font-medium">
+            Your current download card remains ready while loading the new clip
+          </p>
+        </div>
+      )}
+
       {/* ── 1. Top Header Info (Platform, Resolution Badge, Title, Caption Copy) ── */}
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
         <div className="space-y-1.5 flex-1 min-w-0">
@@ -320,8 +352,13 @@ export const ResultCard: React.FC<ResultCardProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  setCustomFilename(presetCreatorCaption);
-                  setActivePreset('author_title');
+                  if (globalCustomName && globalCustomName.trim()) {
+                    setCustomFilename(globalCustomName.trim());
+                    setActivePreset('custom');
+                  } else {
+                    setCustomFilename(presetCreatorCaption);
+                    setActivePreset('author_title');
+                  }
                 }}
                 className="text-emerald-500 hover:underline flex items-center gap-1 cursor-pointer text-[11px]"
               >
