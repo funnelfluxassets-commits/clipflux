@@ -819,124 +819,216 @@ app.get('/api/info', async (req, res) => {
     });
   }
 
-  // ── Pinterest Handler ───────────────────────────────────────────────────────
+  // ── Pinterest Handler (Supports both Image Pins & Video Pins) ─────────────
   if (platform === 'pinterest') {
-    const ytdlpBin = await ensureYtDlp();
-    const args = [
-      '--dump-json',
-      '--no-playlist',
-      '--no-warnings',
-      '--add-header', 'User-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-      cleanUrlWithoutParams,
-    ];
-
-    let mediaInfo: any;
     try {
-      const { stdout } = await execFileAsync(ytdlpBin, args, { timeout: 25000 });
-      mediaInfo = JSON.parse(stdout.trim());
-    } catch (err: any) {
-      console.warn('[yt-dlp] Pinterest extraction error:', err?.message);
-      throw new Error('Could not extract Pinterest video. Please check the URL.');
-    }
+      // 1. Follow shortlinks (e.g. pin.it/... -> pinterest.com/pin/...)
+      let finalUrl = cleanUrlWithoutParams;
+      let html = '';
+      try {
+        const resp = await fetch(cleanUrlWithoutParams, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+          },
+          redirect: 'follow',
+        });
+        finalUrl = resp.url || cleanUrlWithoutParams;
+        html = await resp.text();
+      } catch (fetchErr) {
+        console.warn('[Pinterest fetch page error]', fetchErr);
+      }
 
-    const title = mediaInfo.title || mediaInfo.description || 'Pinterest Video';
-    const authorName = mediaInfo.uploader || 'Pinterest Creator';
-    const authorUsername = mediaInfo.uploader_id || authorName.replace(/[^\w]/g, '').toLowerCase();
-    const coverUrl = mediaInfo.thumbnail || '';
-    const width = mediaInfo.width || 720;
-    const height = mediaInfo.height || 1280;
-    const aspect_ratio: '9:16' | '16:9' = (height / (width || 1) >= 1.2) ? '9:16' : '16:9';
+      // 2. Extract Pin ID
+      const pinIdMatch = finalUrl.match(/\/pin\/([0-9]+)/);
+      const pinId = pinIdMatch ? pinIdMatch[1] : (finalUrl.split('/').pop() || 'pin');
 
-    // Find direct progressive MP4
-    let directMp4 = '';
-    if (Array.isArray(mediaInfo.formats)) {
-      // 1. Direct progressive MP4 format if present
-      const directFormat = mediaInfo.formats.find((f: any) => f.url && f.url.endsWith('.mp4') && !f.url.includes('.m3u8'));
-      if (directFormat) directMp4 = directFormat.url;
+      // 3. Extract Title & Author from HTML
+      let title = 'Pinterest Pin';
+      const titleMatch = html.match(/<title>([^<]+)<\/title>/i);
+      if (titleMatch) {
+        title = titleMatch[1].replace(/\s*\|\s*Pinterest.*$/i, '').trim();
+      }
 
-      // 2. Derive 720p progressive MP4 from HLS pattern (v1.pinimg.com/videos/iht/hls/...)
+      let authorName = 'Pinterest Creator';
+      let authorUsername = '';
+      const pinnerMatch = html.match(/"pinner":\{"username":"([^"]+)"/);
+      if (pinnerMatch) {
+        authorUsername = pinnerMatch[1];
+        authorName = `@${authorUsername}`;
+      }
+
+      // 4. Check for video in HTML
+      const hlsMatch = html.match(/https:\/\/v1\.pinimg\.com\/videos\/(?:iht|mc)\/hls\/([a-f0-9/]+)_[0-9]+w\.m3u8/);
+      const mp4DirectMatch = html.match(/https:\/\/[^" ]*pinimg\.com\/[^" ]+\.mp4/);
+      let directMp4 = '';
+      if (hlsMatch && hlsMatch[1]) {
+        directMp4 = `https://v1.pinimg.com/videos/iht/720p/${hlsMatch[1]}.mp4`;
+      } else if (mp4DirectMatch) {
+        directMp4 = mp4DirectMatch[0];
+      }
+
+      // 5. If video not found in HTML, try yt-dlp in case it is a video pin
       if (!directMp4) {
-        for (const f of mediaInfo.formats) {
-          const match = f.url && f.url.match(/https:\/\/v1\.pinimg\.com\/videos\/(?:iht|mc)\/hls\/([a-f0-9/]+)_[0-9]+w\.m3u8/);
-          if (match && match[1]) {
-            directMp4 = `https://v1.pinimg.com/videos/iht/720p/${match[1]}.mp4`;
-            break;
+        try {
+          const ytdlpBin = await ensureYtDlp();
+          const args = [
+            '--dump-json',
+            '--no-playlist',
+            '--no-warnings',
+            '--add-header', 'User-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+            finalUrl,
+          ];
+          const { stdout } = await execFileAsync(ytdlpBin, args, { timeout: 15000 });
+          if (stdout && stdout.trim()) {
+            const mediaInfo = JSON.parse(stdout.trim());
+            if (mediaInfo.title) title = mediaInfo.title;
+            if (mediaInfo.uploader) authorName = mediaInfo.uploader;
+            if (mediaInfo.uploader_id) authorUsername = mediaInfo.uploader_id;
+            if (Array.isArray(mediaInfo.formats)) {
+              const directFormat = mediaInfo.formats.find((f: any) => f.url && f.url.endsWith('.mp4') && !f.url.includes('.m3u8'));
+              if (directFormat) directMp4 = directFormat.url;
+            }
+            if (!directMp4 && mediaInfo.url && mediaInfo.url.endsWith('.mp4')) {
+              directMp4 = mediaInfo.url;
+            }
           }
+        } catch {
+          // yt-dlp fails on image pins - continue to image extraction
         }
       }
+
+      // 6. Extract Images (Full-resolution original + standard preview)
+      const preloadMatch = html.match(/id="pin-image-preload"[^>]*href="([^"]+)"/) || html.match(/href="([^"]+)"[^>]*id="pin-image-preload"/);
+      let baseImg = preloadMatch ? preloadMatch[1] : '';
+      if (!baseImg) {
+        const anyPinImg = html.match(/https:\/\/i\.pinimg\.com\/(?:736x|originals|564x)\/[a-f0-9/]+\.(?:jpg|jpeg|png|webp)/);
+        if (anyPinImg) baseImg = anyPinImg[0];
+      }
+
+      let originalImg = '';
+      let standardImg = '';
+      if (baseImg) {
+        originalImg = baseImg.replace(/\/(?:736x|564x|474x|236x)\//, '/originals/');
+        standardImg = baseImg.replace(/\/(?:originals|564x|474x|236x)\//, '/736x/');
+      }
+
+      // 7. If neither video nor image was found, return clean error
+      if (!directMp4 && !originalImg && !standardImg) {
+        return res.status(400).json({
+          success: false,
+          error: 'Could not extract Pinterest media. The pin may be private or deleted.',
+        });
+      }
+
+      const coverUrl = originalImg || standardImg || '';
+      const isVideo = !!directMp4;
+
+      // 8. Build downloads list according to media type (Video Pin vs Image Pin)
+      let downloads: any[] = [];
+      if (isVideo) {
+        downloads = [
+          {
+            id: 'cf_pinterest_1080p',
+            label: '1080p Full HD (Recommended)',
+            quality: '1080',
+            description: 'Original high-definition MP4 video with audio',
+            badge: '1080p FULL HD',
+            type: 'video' as const,
+            url: targetUrl,
+            directUrl: directMp4,
+            extension: 'mp4' as const,
+            isOriginal: true,
+          },
+          {
+            id: 'cf_pinterest_720p',
+            label: '720p HD (Fast Download)',
+            quality: '720',
+            description: 'Standard HD MP4 — quick to save and share',
+            badge: '720p HD',
+            type: 'video' as const,
+            url: targetUrl,
+            directUrl: directMp4,
+            extension: 'mp4' as const,
+          },
+          {
+            id: 'cf_pinterest_audio',
+            label: '320kbps MP3 Audio',
+            quality: '320k',
+            description: 'Clean extracted master audio track',
+            badge: 'MP3 AUDIO',
+            type: 'audio' as const,
+            url: targetUrl,
+            directUrl: directMp4,
+            extension: 'mp3' as const,
+          },
+          {
+            id: 'cf_pinterest_thumb',
+            label: 'HD Thumbnail Cover',
+            quality: 'HD',
+            description: 'Full-resolution artwork in JPG',
+            badge: 'THUMBNAIL',
+            type: 'thumbnail' as const,
+            url: coverUrl,
+            directUrl: coverUrl,
+            extension: 'jpg' as const,
+          },
+        ];
+      } else {
+        // High-Resolution Image Pin
+        const imgExt = originalImg.toLowerCase().endsWith('.png') ? 'png' : 'jpg';
+        downloads = [
+          {
+            id: 'cf_pinterest_img_orig',
+            label: 'Original HD Image (Highest Resolution)',
+            quality: 'Original',
+            description: 'Full master resolution image in original quality',
+            badge: 'ORIGINAL HD',
+            type: 'thumbnail' as const,
+            url: originalImg,
+            directUrl: originalImg,
+            extension: imgExt as any,
+            isOriginal: true,
+          },
+          {
+            id: 'cf_pinterest_img_736',
+            label: 'Standard HD Image (736px)',
+            quality: '720',
+            description: 'Standard high-definition image optimized for sharing',
+            badge: 'STANDARD HD',
+            type: 'thumbnail' as const,
+            url: standardImg || originalImg,
+            directUrl: standardImg || originalImg,
+            extension: 'jpg' as const,
+          },
+        ];
+      }
+
+      return res.json({
+        success: true,
+        data: {
+          id: pinId,
+          platform: 'pinterest',
+          originalUrl: targetUrl,
+          title,
+          authorName,
+          authorUsername,
+          coverUrl,
+          videoUrl: directMp4 || undefined,
+          aspect_ratio: '9:16',
+          width: 720,
+          height: 1280,
+          downloads,
+        },
+      });
+    } catch (pinErr: any) {
+      console.warn('[Pinterest Handler Error]', pinErr);
+      return res.status(400).json({
+        success: false,
+        error: 'Could not extract Pinterest pin. Please check the URL.',
+      });
     }
-
-    if (!directMp4 && mediaInfo.url && mediaInfo.url.endsWith('.mp4')) {
-      directMp4 = mediaInfo.url;
-    }
-
-    const videoUrl = directMp4;
-
-    const downloads = [
-      {
-        id: 'cf_pinterest_1080p',
-        label: '1080p Full HD (Recommended)',
-        quality: '1080',
-        description: 'Original high-definition MP4 video with audio',
-        badge: '1080p FULL HD',
-        type: 'video' as const,
-        url: targetUrl,
-        directUrl: directMp4,
-        extension: 'mp4' as const,
-        isOriginal: true,
-      },
-      {
-        id: 'cf_pinterest_720p',
-        label: '720p HD (Fast Download)',
-        quality: '720',
-        description: 'Standard HD MP4 — quick to save and share',
-        badge: '720p HD',
-        type: 'video' as const,
-        url: targetUrl,
-        directUrl: directMp4,
-        extension: 'mp4' as const,
-      },
-      {
-        id: 'cf_pinterest_audio',
-        label: '320kbps MP3 Audio',
-        quality: '320k',
-        description: 'Clean extracted master audio track',
-        badge: 'MP3 AUDIO',
-        type: 'audio' as const,
-        url: targetUrl,
-        directUrl: directMp4,
-        extension: 'mp3' as const,
-      },
-      {
-        id: 'cf_pinterest_thumb',
-        label: 'HD Thumbnail Cover',
-        quality: 'HD',
-        description: 'Full-resolution video artwork in JPG',
-        badge: 'THUMBNAIL',
-        type: 'thumbnail' as const,
-        url: coverUrl,
-        directUrl: coverUrl,
-        extension: 'jpg' as const,
-      },
-    ];
-
-    return res.json({
-      success: true,
-      data: {
-        id: mediaInfo.id || 'pin',
-        platform: 'pinterest',
-        originalUrl: targetUrl,
-        title,
-        authorName,
-        authorUsername,
-        coverUrl,
-        videoUrl,
-        aspect_ratio,
-        width,
-        height,
-        downloads,
-      },
-    });
   }
 
   // ── Universal Fallback via yt-dlp ───────────────────────────────────────────

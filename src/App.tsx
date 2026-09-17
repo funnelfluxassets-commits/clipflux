@@ -120,10 +120,16 @@ export const App: React.FC = () => {
 
     try {
       const res = await fetch(`/api/info?url=${encodeURIComponent(target)}`);
-      const data = await res.json();
+      const text = await res.text();
+      let data: any = null;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw new Error(`Server returned an error (${res.status}). Please check the link and try again.`);
+      }
 
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Failed to extract media information.');
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.error || 'Failed to extract media information.');
       }
 
       setMediaResult(data.data);

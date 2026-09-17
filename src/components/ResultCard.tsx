@@ -126,6 +126,8 @@ export const ResultCard: React.FC<ResultCardProps> = ({
     }
   };
 
+  const hasVideo = !!media.videoUrl || media.downloads.some((d) => d.type === 'video');
+
   const isVertical =
     media.aspect_ratio === '9:16' ||
     media.originalUrl.includes('/reel') ||
@@ -140,13 +142,18 @@ export const ResultCard: React.FC<ResultCardProps> = ({
         <div className="space-y-1.5 flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="inline-flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-              {isVertical ? <Smartphone className="w-3 h-3 text-emerald-500" /> : <Monitor className="w-3 h-3 text-emerald-500" />}
-              {media.platform === 'twitter' ? 'X / TWITTER' : media.platform.toUpperCase()} {isVertical ? 'REEL (9:16)' : 'VIDEO (16:9)'}
+              {hasVideo ? (
+                isVertical ? <Smartphone className="w-3 h-3 text-emerald-500" /> : <Monitor className="w-3 h-3 text-emerald-500" />
+              ) : (
+                <ImageIcon className="w-3 h-3 text-emerald-500" />
+              )}
+              {media.platform === 'twitter' ? 'X / TWITTER' : media.platform.toUpperCase()}{' '}
+              {hasVideo ? (isVertical ? 'REEL (9:16)' : 'VIDEO (16:9)') : 'PIN (IMAGE)'}
             </span>
 
             <span className="inline-flex items-center gap-1 text-[11px] font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
               <Sparkles className="w-3 h-3 text-amber-500" />
-              Full HD Ready
+              {hasVideo ? 'Full HD Ready' : 'Original HD Image'}
             </span>
           </div>
 
@@ -179,70 +186,88 @@ export const ResultCard: React.FC<ResultCardProps> = ({
       {/* ── 2. Media Preview & Download Controls Grid ────────────────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
         
-        {/* Left Column: Portrait (9:16) or Landscape (16:9) Video Player Preview */}
+        {/* Left Column: Portrait (9:16) or Landscape (16:9) Video Player Preview or Image Preview */}
         <div className={`md:col-span-5 relative rounded-2xl overflow-hidden bg-black shadow-lg border border-zinc-200 dark:border-zinc-800 mx-auto w-full ${
           isVertical ? 'aspect-[9/16] max-h-[460px] max-w-[280px]' : 'aspect-video max-h-[300px]'
         }`}>
-          {isPlayingVideo ? (
-            media.platform === 'instagram' ? (
-              <iframe
-                src={`https://www.instagram.com/p/${media.id}/embed/`}
-                title={media.title}
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
-                className="w-full h-full border-0"
-              />
-            ) : media.platform === 'youtube' ? (
-              <iframe
-                src={`https://www.youtube.com/embed/${media.id}?autoplay=1`}
-                title={media.title}
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
-                className="w-full h-full border-0"
-              />
-            ) : (
-              <video
-                src={
-                  media.videoUrl ||
-                  media.downloads.find((d) => d.type === 'video')?.directUrl ||
-                  media.downloads.find((d) => d.type === 'video')?.url
-                }
-                controls
-                autoPlay
-                playsInline
-                className="w-full h-full object-contain bg-black"
-                onError={(e) => {
-                  const target = e.currentTarget;
-                  const fallback = media.downloads.find((d) => d.directUrl)?.directUrl;
-                  if (fallback && target.src !== fallback) {
-                    target.src = fallback;
+          {hasVideo ? (
+            isPlayingVideo ? (
+              media.platform === 'instagram' ? (
+                <iframe
+                  src={`https://www.instagram.com/p/${media.id}/embed/`}
+                  title={media.title}
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                  className="w-full h-full border-0"
+                />
+              ) : media.platform === 'youtube' ? (
+                <iframe
+                  src={`https://www.youtube.com/embed/${media.id}?autoplay=1`}
+                  title={media.title}
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                  className="w-full h-full border-0"
+                />
+              ) : (
+                <video
+                  src={
+                    media.videoUrl ||
+                    media.downloads.find((d) => d.type === 'video')?.directUrl ||
+                    media.downloads.find((d) => d.type === 'video')?.url
                   }
-                }}
-              />
+                  controls
+                  autoPlay
+                  playsInline
+                  className="w-full h-full object-contain bg-black"
+                  onError={(e) => {
+                    const target = e.currentTarget;
+                    const fallback = media.downloads.find((d) => d.directUrl)?.directUrl;
+                    if (fallback && target.src !== fallback) {
+                      target.src = fallback;
+                    }
+                  }}
+                />
+              )
+            ) : (
+              <div className="relative w-full h-full group cursor-pointer" onClick={() => setIsPlayingVideo(true)}>
+                <img
+                  src={media.coverUrl}
+                  alt={media.title}
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                  crossOrigin="anonymous"
+                  onError={(e) => {
+                    e.currentTarget.src = 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&auto=format&fit=crop&q=60';
+                  }}
+                />
+                <div className="absolute inset-0 bg-black/35 flex items-center justify-center group-hover:bg-black/50 transition-colors">
+                  <button
+                    className="w-14 h-14 rounded-full bg-gradient-to-tr from-emerald-500 to-teal-400 text-white flex items-center justify-center shadow-xl hover:scale-110 active:scale-95 transition-all cursor-pointer"
+                    title="Click to Play Video"
+                  >
+                    <Play className="w-6 h-6 fill-white translate-x-0.5" />
+                  </button>
+                </div>
+
+                <span className="absolute bottom-2.5 left-2.5 inline-flex items-center gap-1 text-[10px] font-semibold text-white bg-black/70 backdrop-blur-md px-2 py-1 rounded-lg">
+                  <Play className="w-3 h-3 fill-white" />
+                  <span>{isVertical ? 'Click to Play Reel' : 'Click to Play Video'}</span>
+                </span>
+              </div>
             )
           ) : (
-            <div className="relative w-full h-full group cursor-pointer" onClick={() => setIsPlayingVideo(true)}>
+            <div className="relative w-full h-full flex items-center justify-center bg-zinc-950">
               <img
                 src={media.coverUrl}
                 alt={media.title}
-                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                className="w-full h-full object-contain"
                 crossOrigin="anonymous"
                 onError={(e) => {
                   e.currentTarget.src = 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&auto=format&fit=crop&q=60';
                 }}
               />
-              <div className="absolute inset-0 bg-black/35 flex items-center justify-center group-hover:bg-black/50 transition-colors">
-                <button
-                  className="w-14 h-14 rounded-full bg-gradient-to-tr from-emerald-500 to-teal-400 text-white flex items-center justify-center shadow-xl hover:scale-110 active:scale-95 transition-all cursor-pointer"
-                  title="Click to Play Video"
-                >
-                  <Play className="w-6 h-6 fill-white translate-x-0.5" />
-                </button>
-              </div>
-
               <span className="absolute bottom-2.5 left-2.5 inline-flex items-center gap-1 text-[10px] font-semibold text-white bg-black/70 backdrop-blur-md px-2 py-1 rounded-lg">
-                <Play className="w-3 h-3 fill-white" />
-                <span>{isVertical ? 'Click to Play Reel' : 'Click to Play Video'}</span>
+                <ImageIcon className="w-3 h-3 text-amber-400" />
+                <span>Original HD Image</span>
               </span>
             </div>
           )}
