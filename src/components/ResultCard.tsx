@@ -24,8 +24,6 @@ interface ResultCardProps {
   onDownload: (option: DownloadOption, customFilename: string) => Promise<void> | void;
   downloadingId: string | null;
   downloadProgress?: string | null;
-  isRefreshing?: boolean;
-  globalCustomName?: string;
 }
 
 export const ResultCard: React.FC<ResultCardProps> = ({
@@ -33,15 +31,32 @@ export const ResultCard: React.FC<ResultCardProps> = ({
   onDownload,
   downloadingId,
   downloadProgress,
-  isRefreshing,
-  globalCustomName,
 }) => {
   const [copiedCaption, setCopiedCaption] = useState(false);
   const [downloadSuccessId, setDownloadSuccessId] = useState<string | null>(null);
   const [isPlayingVideo, setIsPlayingVideo] = useState(false);
-  const [selectedDownloadId, setSelectedDownloadId] = useState<string | null>(
-    () => media.downloads.find((d) => d.isOriginal)?.id || media.downloads[0]?.id || null
-  );
+
+  // Remember preferred download quality/type across uploads
+  const [selectedDownloadId, setSelectedDownloadId] = useState<string | null>(() => {
+    const savedType = localStorage.getItem('clipflux_preferred_quality');
+    if (savedType) {
+      const match = media.downloads.find((d) => d.quality === savedType || d.type === savedType || d.id === savedType);
+      if (match) return match.id;
+    }
+    return media.downloads.find((d) => d.isOriginal)?.id || media.downloads[0]?.id || null;
+  });
+
+  useEffect(() => {
+    const savedType = localStorage.getItem('clipflux_preferred_quality');
+    if (savedType) {
+      const match = media.downloads.find((d) => d.quality === savedType || d.type === savedType || d.id === savedType);
+      if (match) {
+        setSelectedDownloadId(match.id);
+        return;
+      }
+    }
+    setSelectedDownloadId(media.downloads.find((d) => d.isOriginal)?.id || media.downloads[0]?.id || null);
+  }, [media.id]);
 
   // Filename Presets
   const cleanForFilename = (str: string): string => {
@@ -66,29 +81,41 @@ export const ResultCard: React.FC<ResultCardProps> = ({
   const presetCaptionOnly = useMemo(() => titleSlug, [titleSlug]);
   const presetCreatorId = useMemo(() => `${authorSlug}_${media.id}`, [authorSlug, media.id]);
 
+  // Persist user-customized filename across uploads so it doesn't get wiped out
   const [activePreset, setActivePreset] = useState<'author_title' | 'title_only' | 'author_id' | 'custom'>(() => {
-    return (globalCustomName && globalCustomName.trim()) ? 'custom' : 'author_title';
-  });
-  const [customFilename, setCustomFilename] = useState<string>(() => {
-    return (globalCustomName && globalCustomName.trim()) ? globalCustomName.trim() : presetCreatorCaption;
+    const savedCustom = localStorage.getItem('clipflux_custom_filename');
+    return (savedCustom && savedCustom.trim()) ? 'custom' : 'author_title';
   });
 
-  // Keep custom filename synchronized when globalCustomName or media changes
-  React.useEffect(() => {
-    if (globalCustomName && globalCustomName.trim()) {
-      setCustomFilename(globalCustomName.trim());
+  const [customFilename, setCustomFilename] = useState<string>(() => {
+    const savedCustom = localStorage.getItem('clipflux_custom_filename');
+    return (savedCustom && savedCustom.trim()) ? savedCustom.trim() : presetCreatorCaption;
+  });
+
+  // When media changes: if user set a custom filename, keep it! Otherwise update to the new media's default title
+  useEffect(() => {
+    const savedCustom = localStorage.getItem('clipflux_custom_filename');
+    if (savedCustom && savedCustom.trim()) {
+      setCustomFilename(savedCustom.trim());
       setActivePreset('custom');
     } else {
       setCustomFilename(presetCreatorCaption);
       setActivePreset('author_title');
     }
-  }, [globalCustomName, presetCreatorCaption, media.id]);
+  }, [media.id, presetCreatorCaption]);
 
   const handleSelectPreset = (type: 'author_title' | 'title_only' | 'author_id') => {
+    localStorage.removeItem('clipflux_custom_filename');
     setActivePreset(type);
     if (type === 'author_title') setCustomFilename(presetCreatorCaption);
     if (type === 'title_only') setCustomFilename(presetCaptionOnly);
     if (type === 'author_id') setCustomFilename(presetCreatorId);
+  };
+
+  const handleResetFilename = () => {
+    localStorage.removeItem('clipflux_custom_filename');
+    setCustomFilename(presetCreatorCaption);
+    setActivePreset('author_title');
   };
 
   const handleCopyCaption = () => {
@@ -106,21 +133,8 @@ export const ResultCard: React.FC<ResultCardProps> = ({
     ((media.height || 0) > (media.width || 0) && (media.height || 0) > 0);
 
   return (
-    <div className="relative w-full max-w-4xl mx-auto mt-6 bg-white dark:bg-zinc-900/95 rounded-3xl p-4 sm:p-7 shadow-2xl border border-zinc-200 dark:border-zinc-800 transition-all space-y-6 animate-in fade-in slide-in-from-top-3">
+    <div className="w-full max-w-4xl mx-auto mt-6 bg-white dark:bg-zinc-900/95 rounded-3xl p-4 sm:p-7 shadow-2xl border border-zinc-200 dark:border-zinc-800 transition-all space-y-6 animate-in fade-in slide-in-from-top-3">
       
-      {/* Non-intrusive Refreshing Overlay when a new URL is fetching */}
-      {isRefreshing && (
-        <div className="absolute inset-0 bg-white/80 dark:bg-zinc-950/80 backdrop-blur-[2px] rounded-3xl z-30 flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-200">
-          <div className="flex items-center gap-2.5 px-4 py-2.5 rounded-2xl bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 shadow-2xl border border-emerald-500/40">
-            <Loader2 className="w-4 h-4 text-emerald-400 dark:text-emerald-600 animate-spin" />
-            <span className="text-xs sm:text-sm font-bold">Extracting new media...</span>
-          </div>
-          <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-2 font-medium">
-            Your current download card remains ready while loading the new clip
-          </p>
-        </div>
-      )}
-
       {/* ── 1. Top Header Info (Platform, Resolution Badge, Title, Caption Copy) ── */}
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
         <div className="space-y-1.5 flex-1 min-w-0">
@@ -254,7 +268,10 @@ export const ResultCard: React.FC<ResultCardProps> = ({
               return (
                 <div
                   key={option.id}
-                  onClick={() => setSelectedDownloadId(option.id)}
+                  onClick={() => {
+                    setSelectedDownloadId(option.id);
+                    localStorage.setItem('clipflux_preferred_quality', option.quality || option.type);
+                  }}
                   className={`px-3.5 py-3 sm:px-4 sm:py-3.5 rounded-2xl transition-all cursor-pointer flex items-center justify-between gap-3 h-[72px] sm:h-[76px] ${
                     isSelected
                       ? 'border-2 border-emerald-500 bg-emerald-50/70 dark:bg-emerald-950/25 ring-2 ring-emerald-500/25 shadow-sm'
@@ -351,31 +368,34 @@ export const ResultCard: React.FC<ResultCardProps> = ({
               </span>
               <button
                 type="button"
-                onClick={() => {
-                  if (globalCustomName && globalCustomName.trim()) {
-                    setCustomFilename(globalCustomName.trim());
-                    setActivePreset('custom');
-                  } else {
-                    setCustomFilename(presetCreatorCaption);
-                    setActivePreset('author_title');
-                  }
-                }}
+                onClick={handleResetFilename}
                 className="text-emerald-500 hover:underline flex items-center gap-1 cursor-pointer text-[11px]"
               >
                 <RotateCcw className="w-3 h-3" /> Reset
               </button>
             </div>
 
-            <input
-              type="text"
-              value={customFilename}
-              onChange={(e) => {
-                setCustomFilename(e.target.value);
-                setActivePreset('custom');
-              }}
-              placeholder="custom_filename"
-              className="w-full px-3 py-2 text-xs font-mono bg-zinc-50 dark:bg-zinc-800/80 rounded-xl border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors"
-            />
+            <div className="relative flex items-center">
+              <input
+                type="text"
+                value={customFilename}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setCustomFilename(val);
+                  setActivePreset('custom');
+                  if (val.trim()) {
+                    localStorage.setItem('clipflux_custom_filename', val);
+                  } else {
+                    localStorage.removeItem('clipflux_custom_filename');
+                  }
+                }}
+                placeholder="Enter file name..."
+                className="w-full pl-3 pr-24 py-2 text-xs font-mono bg-zinc-50 dark:bg-zinc-800/80 rounded-xl border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors"
+              />
+              <span className="absolute right-3 text-[11px] font-semibold text-zinc-400 select-none pointer-events-none">
+                .mp4 / .mp3
+              </span>
+            </div>
 
             <div className="flex items-center gap-2 pt-1">
               <span className="text-[11px] text-zinc-400">Presets:</span>

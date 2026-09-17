@@ -83,57 +83,6 @@ export const App: React.FC = () => {
   const [downloadProgress, setDownloadProgress] = useState<string | null>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
-  // Custom Filename & Sequential Project Naming State (Persisted in localStorage)
-  const [customPrefix, setCustomPrefix] = useState<string>(() => {
-    return localStorage.getItem('clipflux_custom_prefix') || '';
-  });
-  const [isSequential, setIsSequential] = useState<boolean>(() => {
-    const saved = localStorage.getItem('clipflux_is_sequential');
-    return saved !== null ? saved === 'true' : true;
-  });
-  const [sequenceIndex, setSequenceIndex] = useState<number>(() => {
-    const saved = localStorage.getItem('clipflux_seq_index');
-    return saved ? parseInt(saved, 10) || 1 : 1;
-  });
-  const [lastDownloadedMediaId, setLastDownloadedMediaId] = useState<string | null>(null);
-
-  useEffect(() => {
-    localStorage.setItem('clipflux_custom_prefix', customPrefix);
-  }, [customPrefix]);
-
-  useEffect(() => {
-    localStorage.setItem('clipflux_is_sequential', String(isSequential));
-  }, [isSequential]);
-
-  useEffect(() => {
-    localStorage.setItem('clipflux_seq_index', String(sequenceIndex));
-  }, [sequenceIndex]);
-
-  const handleIncrementSequence = () => {
-    setSequenceIndex((prev) => prev + 1);
-  };
-
-  const handleDecrementSequence = () => {
-    setSequenceIndex((prev) => Math.max(1, prev - 1));
-  };
-
-  const handleResetSequence = () => {
-    setSequenceIndex(1);
-  };
-
-  const computedGlobalCustomName = React.useMemo(() => {
-    if (!customPrefix.trim()) return '';
-    const clean = customPrefix.trim().replace(/[^\w\s-]/gi, '').replace(/[\s_]+/g, '_');
-    return isSequential ? `${clean}-${String(sequenceIndex).padStart(2, '0')}` : clean;
-  }, [customPrefix, isSequential, sequenceIndex]);
-
-  const computedPreview = React.useMemo(() => {
-    if (computedGlobalCustomName) {
-      return `${computedGlobalCustomName}.mp4`;
-    }
-    return '@creator_title.mp4';
-  }, [computedGlobalCustomName]);
-
   // Auto-detect platform from URL
   useEffect(() => {
     const trimmed = url.trim().toLowerCase();
@@ -167,7 +116,7 @@ export const App: React.FC = () => {
 
     setIsFetchingInfo(true);
     setFetchError(null);
-    // Preserves existing mediaResult on screen while fetching next video (zero layout jump)
+    // Preserves existing mediaResult on screen while fetching next video (exact same as TokDownloader)
 
     try {
       const res = await fetch(`/api/info?url=${encodeURIComponent(target)}`);
@@ -175,19 +124,6 @@ export const App: React.FC = () => {
 
       if (!res.ok || !data.success) {
         throw new Error(data.error || 'Failed to extract media information.');
-      }
-
-      // If previous video was downloaded and user is loading a different video, advance sequence number
-      if (
-        mediaResult &&
-        lastDownloadedMediaId &&
-        lastDownloadedMediaId === mediaResult.id &&
-        data.data.id !== lastDownloadedMediaId
-      ) {
-        if (customPrefix.trim() && isSequential) {
-          setSequenceIndex((prev) => prev + 1);
-        }
-        setLastDownloadedMediaId(null);
       }
 
       setMediaResult(data.data);
@@ -485,22 +421,13 @@ export const App: React.FC = () => {
               </p>
             </div>
 
-            {/* In-Place Search Bar with Custom Filename & Sequence Controls */}
+            {/* In-Place Search Bar */}
             <UrlInputBar
               url={url}
               setUrl={setUrl}
               onSubmit={handleFetchMedia}
               isLoading={isFetchingInfo}
               detectedPlatform={detectedPlatform}
-              customPrefix={customPrefix}
-              setCustomPrefix={setCustomPrefix}
-              isSequential={isSequential}
-              setIsSequential={setIsSequential}
-              sequenceIndex={sequenceIndex}
-              onIncrementSequence={handleIncrementSequence}
-              onDecrementSequence={handleDecrementSequence}
-              onResetSequence={handleResetSequence}
-              computedPreview={computedPreview}
             />
 
             {/* Error Banner */}
@@ -517,8 +444,6 @@ export const App: React.FC = () => {
                 onDownload={handleDownload}
                 downloadingId={downloadingId}
                 downloadProgress={downloadProgress}
-                isRefreshing={isFetchingInfo}
-                globalCustomName={computedGlobalCustomName}
               />
             )}
           </div>
