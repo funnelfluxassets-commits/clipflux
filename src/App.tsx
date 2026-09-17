@@ -104,7 +104,7 @@ export const App: React.FC = () => {
     } else if (trimmed.includes('pinterest.com') || trimmed.includes('pin.it')) {
       setDetectedPlatform('pinterest');
     } else if (trimmed.includes('snapchat.com')) {
-      setDetectedPlatform('snapchat');
+      setDetectedPlatform('unknown');
     } else {
       setDetectedPlatform('unknown');
     }
@@ -221,7 +221,6 @@ export const App: React.FC = () => {
               document.body.removeChild(tempLink);
               setTimeout(() => window.URL.revokeObjectURL(blobUrl), 4000);
 
-              setLastDownloadedMediaId(mediaResult?.id || 'downloaded');
               setDownloadingId(null);
               setDownloadProgress(null);
               return;
@@ -281,7 +280,6 @@ export const App: React.FC = () => {
       tempLink.click();
       document.body.removeChild(tempLink);
       setTimeout(() => window.URL.revokeObjectURL(blobUrl), 4000);
-      setLastDownloadedMediaId(mediaResult?.id || 'downloaded');
     } catch (e: any) {
       console.error('Download error:', e);
       setFetchError(e?.message || 'Download could not complete. Please try another quality option.');
