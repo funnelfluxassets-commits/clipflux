@@ -103,6 +103,8 @@ export const App: React.FC = () => {
       setDetectedPlatform('facebook');
     } else if (trimmed.includes('pinterest.com') || trimmed.includes('pin.it')) {
       setDetectedPlatform('pinterest');
+    } else if (trimmed.includes('reddit.com') || trimmed.includes('redd.it')) {
+      setDetectedPlatform('reddit');
     } else if (trimmed.includes('snapchat.com')) {
       setDetectedPlatform('unknown');
     } else {

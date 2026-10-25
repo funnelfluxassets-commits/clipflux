@@ -19,6 +19,17 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Enable CORS for web clients & proxying
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
 // Static asset serving
 app.use(express.static(path.join(serverDir, 'public')));
 app.use(express.static(path.join(serverDir, 'dist')));
@@ -232,6 +243,27 @@ function ensureYouTubeCookiesFile(): string[] {
     return [];
   }
 }
+
+// ─── Reddit Cookies Support ──────────────────────────────────────────────────
+const REDDIT_COOKIES_PATH = '/tmp/reddit-cookies.txt';
+function ensureRedditCookies(): string[] {
+  const cookiesEnv = process.env.REDDIT_COOKIES || process.env.COOKIES_TXT;
+  if (!cookiesEnv) return [];
+  try {
+    if (!fs.existsSync(REDDIT_COOKIES_PATH) || fs.statSync(REDDIT_COOKIES_PATH).size === 0) {
+      let content = cookiesEnv;
+      if (content.startsWith('"') && content.endsWith('"')) {
+        content = content.slice(1, -1);
+      }
+      content = content.replace(/\\n/g, '\n').replace(/\\t/g, '\t');
+      fs.writeFileSync(REDDIT_COOKIES_PATH, content, 'utf-8');
+    }
+    return ['--cookies', REDDIT_COOKIES_PATH];
+  } catch {
+    return [];
+  }
+}
+
 
 // ─── SnapSave Decoder ────────────────────────────────────────────────────────
 interface SnapSaveItem {
@@ -1031,6 +1063,249 @@ app.get('/api/info', async (req, res) => {
     }
   }
 
+  // ── Reddit Handler (Supports Video Posts via v.redd.it and Image Posts) ─────
+  if (platform === 'reddit') {
+    try {
+      const cleanUrl = cleanUrlWithoutParams.replace(/\/+$/, '');
+      let title = 'Reddit Media';
+      let authorName = 'Reddit Creator';
+      let authorUsername = '';
+      let coverUrl = '';
+      let vReddItUrl = '';
+      let iReddItUrl = '';
+      const redditPostId = cleanUrl.split('/').pop() || 'reddit';
+
+      // If URL is directly v.redd.it
+      if (cleanUrl.includes('v.redd.it')) {
+        vReddItUrl = cleanUrl;
+      }
+
+      // 1. Try Reddit oEmbed for instant title & author
+      try {
+        const oEmbedUrl = `https://www.reddit.com/oembed?url=${encodeURIComponent(targetUrl)}`;
+        const oRes = await fetch(oEmbedUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+          },
+        });
+        if (oRes.ok) {
+          const oJson: any = await oRes.json();
+          if (oJson.title) title = oJson.title;
+          if (oJson.author_name) {
+            authorUsername = oJson.author_name;
+            authorName = `u/${authorUsername}`;
+          }
+        }
+      } catch {}
+
+      // 2. If not already a direct v.redd.it link, extract media link from .rss feed
+      if (!vReddItUrl) {
+        try {
+          const rssRes = await fetch(`${cleanUrl}/.rss`, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+              'Accept': 'application/atom+xml,text/xml,*/*',
+            },
+          });
+          if (rssRes.ok) {
+            const xml = await rssRes.text();
+            const vMatch = xml.match(/https:\/\/v\.redd\.it\/([a-zA-Z0-9]+)/);
+            if (vMatch) vReddItUrl = `https://v.redd.it/${vMatch[1]}`;
+
+            const iMatch = xml.match(/https:\/\/i\.redd\.it\/([a-zA-Z0-9.]+)/);
+            if (iMatch) iReddItUrl = `https://i.redd.it/${iMatch[1]}`;
+
+            const thumbMatch = xml.match(/&lt;img src=&quot;(https:\/\/[^&]+)&quot;/);
+            if (thumbMatch) coverUrl = thumbMatch[1].replace(/&amp;/g, '&');
+
+            if (title === 'Reddit Media') {
+              const titleMatch = xml.match(/<title>([^<]+)<\/title>/);
+              if (titleMatch) title = titleMatch[1].replace(/\s*:\s*[a-zA-Z0-9_]+\s*$/, '').trim();
+            }
+
+            if (authorName === 'Reddit Creator') {
+              const authorMatch = xml.match(/<author><name>\/u\/([^<]+)<\/name>/);
+              if (authorMatch) {
+                authorUsername = authorMatch[1];
+                authorName = `/u/${authorUsername}`;
+              }
+            }
+          }
+        } catch (rssErr) {
+          console.warn('[Reddit RSS Extraction Error]', rssErr);
+        }
+      }
+
+      // 3. Process Video Post (v.redd.it)
+      if (vReddItUrl) {
+        let mediaInfo: any = null;
+        try {
+          const ytdlpBin = await ensureYtDlp();
+          const args = [
+            '--dump-json',
+            '--no-playlist',
+            '--no-warnings',
+            '--add-header', 'User-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+            ...ensureRedditCookies(),
+            vReddItUrl,
+          ];
+          const { stdout } = await execFileAsync(ytdlpBin, args, { timeout: 20000 });
+          if (stdout && stdout.trim()) {
+            mediaInfo = JSON.parse(stdout.trim());
+          }
+        } catch (ytdlpErr: any) {
+          console.warn('[yt-dlp v.redd.it fallback warning]', ytdlpErr?.message);
+        }
+
+        const width = mediaInfo?.width || 1080;
+        const height = mediaInfo?.height || 1920;
+        const aspect_ratio: '9:16' | '16:9' = height > width ? '9:16' : '16:9';
+        const duration = mediaInfo?.duration || 15;
+        if (!coverUrl && mediaInfo?.thumbnail) coverUrl = mediaInfo.thumbnail;
+        if (title === 'Reddit Media' && mediaInfo?.title) title = mediaInfo.title;
+
+        // Progressive stream extraction
+        let f1080Url = '';
+        let f720Url = '';
+        let f360Url = '';
+        if (Array.isArray(mediaInfo?.formats)) {
+          const mp4Formats = mediaInfo.formats.filter((f: any) => f.url && f.ext === 'mp4' && !f.url.includes('.m3u8'));
+          mp4Formats.sort((a: any, b: any) => {
+            const dimA = Math.max(a.height || 0, a.width || 0);
+            const dimB = Math.max(b.height || 0, b.width || 0);
+            return dimB - dimA;
+          });
+          if (mp4Formats.length > 0) {
+            f1080Url = mp4Formats[0].url;
+            const f720 = mp4Formats.find((f: any) => Math.min(f.height || 0, f.width || 0) <= 720) || mp4Formats[0];
+            f720Url = f720.url;
+            const f360 = mp4Formats.find((f: any) => Math.min(f.height || 0, f.width || 0) <= 360) || mp4Formats[mp4Formats.length - 1];
+            f360Url = f360.url;
+          }
+        }
+
+        const directVideoUrl = f1080Url || f720Url || f360Url || `${vReddItUrl}/DASH_720.mp4`;
+
+        const downloads = [
+          {
+            id: 'cf_reddit_1080p',
+            label: '1080p Full HD (Recommended)',
+            quality: '1080',
+            description: 'Original high-definition MP4 video with audio',
+            badge: '1080p FULL HD',
+            type: 'video' as const,
+            url: vReddItUrl,
+            directUrl: f1080Url || directVideoUrl,
+            extension: 'mp4' as const,
+            isOriginal: true,
+          },
+          {
+            id: 'cf_reddit_720p',
+            label: '720p HD (Fast Download)',
+            quality: '720',
+            description: 'Standard HD MP4 — fast to save and share',
+            badge: '720p HD',
+            type: 'video' as const,
+            url: vReddItUrl,
+            directUrl: f720Url || directVideoUrl,
+            extension: 'mp4' as const,
+          },
+          {
+            id: 'cf_reddit_360p',
+            label: '360p Standard MP4 (Instant)',
+            quality: '360',
+            description: 'Compact file size with audio for instant saving',
+            badge: 'FAST MP4',
+            type: 'video' as const,
+            url: vReddItUrl,
+            directUrl: f360Url || directVideoUrl,
+            extension: 'mp4' as const,
+          },
+          {
+            id: 'cf_reddit_audio',
+            label: '320kbps MP3 Audio',
+            quality: '320k',
+            description: 'Clean extracted master soundtrack in MP3',
+            badge: 'MP3 AUDIO',
+            type: 'audio' as const,
+            url: vReddItUrl,
+            directUrl: `${vReddItUrl}/DASH_AUDIO_128.mp4`,
+            extension: 'mp3' as const,
+          },
+          {
+            id: 'cf_reddit_thumb',
+            label: 'HD Thumbnail Cover',
+            quality: 'HD',
+            description: 'Full-resolution video artwork image in JPG',
+            badge: 'THUMBNAIL',
+            type: 'thumbnail' as const,
+            url: coverUrl,
+            directUrl: coverUrl,
+            extension: 'jpg' as const,
+          },
+        ];
+
+        return res.json({
+          success: true,
+          data: {
+            id: redditPostId,
+            platform: 'reddit',
+            originalUrl: targetUrl,
+            title,
+            authorName,
+            authorUsername,
+            coverUrl,
+            videoUrl: directVideoUrl,
+            duration,
+            durationFormatted: `${duration}s`,
+            aspect_ratio,
+            width,
+            height,
+            downloads,
+          },
+        });
+      }
+
+      // 4. Process Image Post (i.redd.it)
+      if (iReddItUrl) {
+        const ext = iReddItUrl.toLowerCase().endsWith('.png') ? 'png' : 'jpg';
+        const downloads = [
+          {
+            id: 'cf_reddit_img_orig',
+            label: 'Original HD Image (Highest Resolution)',
+            quality: 'Original',
+            description: 'Full master resolution image in original quality',
+            badge: 'ORIGINAL HD',
+            type: 'thumbnail' as const,
+            url: iReddItUrl,
+            directUrl: iReddItUrl,
+            extension: ext as any,
+            isOriginal: true,
+          },
+        ];
+
+        return res.json({
+          success: true,
+          data: {
+            id: redditPostId,
+            platform: 'reddit',
+            originalUrl: targetUrl,
+            title,
+            authorName,
+            authorUsername,
+            coverUrl: iReddItUrl,
+            aspect_ratio: '16:9',
+            width: 1920,
+            height: 1080,
+            downloads,
+          },
+        });
+      }
+    } catch (redditErr: any) {
+      console.warn('[Reddit Handler Error]', redditErr);
+    }
+  }
+
   // ── Universal Fallback via yt-dlp ───────────────────────────────────────────
   try {
     const ytdlpBin = await ensureYtDlp();
@@ -1245,6 +1520,7 @@ app.get('/api/download', async (req, res) => {
         extraArgs = [
           '-f', 'ba/b/bestaudio/best',
           ...ensureInstagramCookies(),
+          ...ensureRedditCookies(),
         ];
       }
 
@@ -1393,6 +1669,7 @@ app.get('/api/download', async (req, res) => {
         '-f', 'bestvideo+bestaudio/best',
         '--merge-output-format', 'mp4',
         ...ensureInstagramCookies(),
+        ...ensureRedditCookies(),
       ];
     }
 
