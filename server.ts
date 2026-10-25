@@ -1513,7 +1513,7 @@ app.get('/api/download', async (req, res) => {
         }
         extraArgs = [
           '-f', 'ba/b/bestaudio/best',
-          '--extractor-args', 'youtube:player_client=web_embedded,web_creator;formats=missing_pot',
+          '--extractor-args', 'youtube:player_client=android;formats=missing_pot',
           ...ensureYouTubeCookiesFile(),
         ];
       } else {
@@ -1658,7 +1658,7 @@ app.get('/api/download', async (req, res) => {
       extraArgs = [
         '-S', `res:${qNum},vcodec:h264,ext:mp4:m4a`,
         '-f', 'bestvideo+bestaudio/best',
-        '--extractor-args', 'youtube:player_client=web_safari;formats=missing_pot',
+        '--extractor-args', 'youtube:player_client=android;formats=missing_pot',
         '--merge-output-format', 'mp4',
         '--postprocessor-args', 'ffmpeg:-c:a aac -b:a 192k -movflags +faststart',
         '--js-runtimes', 'node',
