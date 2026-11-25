@@ -66,127 +66,160 @@ async function getSystemFfmpeg(): Promise<string | null> {
   return null;
 }
 
+async function hasPython310Plus(): Promise<boolean> {
+  try {
+    await execFileAsync('python3', ['-c', 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)'], { timeout: 3000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function downloadBinaryAtomically(url: string, destPath: string, gunzipStream = false): Promise<void> {
+  const tmpPart = `${destPath}.${Date.now()}.part`;
+  try {
+    const res = await fetch(url, {
+      redirect: 'follow',
+      headers: { 'User-Agent': 'ClipFlux/1.0' },
+    });
+    if (!res.ok || !res.body) {
+      throw new Error(`Failed to download binary (${url}): HTTP ${res.status}`);
+    }
+    const { pipeline } = await import('stream/promises');
+    const { Readable } = await import('stream');
+    const file = fs.createWriteStream(tmpPart, { mode: 0o755 });
+    if (gunzipStream) {
+      // @ts-ignore
+      await pipeline(Readable.fromWeb(res.body), zlib.createGunzip(), file);
+    } else {
+      // @ts-ignore
+      await pipeline(Readable.fromWeb(res.body), file);
+    }
+    const stat = fs.statSync(tmpPart);
+    if (stat.size < 100_000) {
+      throw new Error(`Downloaded binary too small (${stat.size} bytes), likely truncated`);
+    }
+    fs.chmodSync(tmpPart, 0o755);
+    fs.renameSync(tmpPart, destPath);
+  } catch (err) {
+    try { if (fs.existsSync(tmpPart)) fs.unlinkSync(tmpPart); } catch {}
+    throw err;
+  }
+}
+
 let ytdlpSetupPromise: Promise<string> | null = null;
 async function ensureYtDlp(): Promise<string> {
-  if (ytdlpReadyPath && fs.existsSync(ytdlpReadyPath)) {
+  if (ytdlpReadyPath && (ytdlpReadyPath === 'yt-dlp' || fs.existsSync(ytdlpReadyPath))) {
     return ytdlpReadyPath;
   }
   if (ytdlpSetupPromise) return ytdlpSetupPromise;
 
   ytdlpSetupPromise = (async () => {
-    const sys = await getSystemYtDlp();
-    if (sys) {
-      ytdlpReadyPath = sys;
-      return sys;
-    }
-
-    if (fs.existsSync(YTDLP_TMP_PATH)) {
-      try {
-        fs.chmodSync(YTDLP_TMP_PATH, 0o755);
-        await execFileAsync(YTDLP_TMP_PATH, ['--version'], { timeout: 5000 });
-        ytdlpReadyPath = YTDLP_TMP_PATH;
-        return YTDLP_TMP_PATH;
-      } catch {
-        try { fs.unlinkSync(YTDLP_TMP_PATH); } catch {}
+    try {
+      const sys = await getSystemYtDlp();
+      if (sys) {
+        ytdlpReadyPath = sys;
+        return sys;
       }
-    }
 
-    console.log('[yt-dlp] Downloading Linux binary to /tmp via https stream...');
-    const url = 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux';
-    await new Promise<void>((resolve, reject) => {
-      const file = fs.createWriteStream(YTDLP_TMP_PATH);
-      const download = (targetUrl: string) => {
-        https.get(targetUrl, (res) => {
-          if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-            return download(res.headers.location);
-          }
-          if (res.statusCode !== 200) {
-            return reject(new Error(`Failed to download yt-dlp: HTTP ${res.statusCode}`));
-          }
-          res.pipe(file);
-          file.on('finish', () => {
-            file.close(() => resolve());
-          });
-        }).on('error', (err) => {
+      if (fs.existsSync(YTDLP_TMP_PATH)) {
+        try {
+          fs.chmodSync(YTDLP_TMP_PATH, 0o755);
+          await execFileAsync(YTDLP_TMP_PATH, ['--version'], { timeout: 30000 });
+          ytdlpReadyPath = YTDLP_TMP_PATH;
+          return YTDLP_TMP_PATH;
+        } catch {
           try { fs.unlinkSync(YTDLP_TMP_PATH); } catch {}
-          reject(err);
-        });
-      };
-      download(url);
-    });
+        }
+      }
 
-    fs.chmodSync(YTDLP_TMP_PATH, 0o755);
-    const { stdout: version } = await execFileAsync(YTDLP_TMP_PATH, ['--version'], { timeout: 15000 });
-    console.log('[yt-dlp] Downloaded & verified:', version.trim());
-    ytdlpReadyPath = YTDLP_TMP_PATH;
-    return YTDLP_TMP_PATH;
+      // Prefer lightweight 3MB Python zipapp if Python 3.10+ is installed (avoids 41MB PyInstaller CPU/RAM spike on Render)
+      const canUseZipapp = await hasPython310Plus();
+      const standaloneName = process.arch === 'arm64' ? 'yt-dlp_linux_aarch64' : 'yt-dlp_linux';
+      const candidates = canUseZipapp
+        ? [
+            { label: 'Python zipapp (3MB)', url: 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp', timeout: 20000 },
+            { label: `Linux standalone (${standaloneName})`, url: `https://github.com/yt-dlp/yt-dlp/releases/latest/download/${standaloneName}`, timeout: 45000 },
+          ]
+        : [
+            { label: `Linux standalone (${standaloneName})`, url: `https://github.com/yt-dlp/yt-dlp/releases/latest/download/${standaloneName}`, timeout: 45000 },
+          ];
+
+      let lastErr: any = null;
+      for (const cand of candidates) {
+        try {
+          console.log(`[yt-dlp] Downloading ${cand.label} to /tmp...`);
+          await downloadBinaryAtomically(cand.url, YTDLP_TMP_PATH, false);
+          const { stdout: version } = await execFileAsync(YTDLP_TMP_PATH, ['--version'], { timeout: cand.timeout });
+          console.log(`[yt-dlp] Downloaded & verified (${cand.label}):`, version.trim());
+          ytdlpReadyPath = YTDLP_TMP_PATH;
+          return YTDLP_TMP_PATH;
+        } catch (err: any) {
+          lastErr = err;
+          console.warn(`[yt-dlp] Failed with ${cand.label}:`, err?.stderr || err?.message);
+          try { if (fs.existsSync(YTDLP_TMP_PATH)) fs.unlinkSync(YTDLP_TMP_PATH); } catch {}
+        }
+      }
+
+      throw lastErr || new Error('Failed to initialize yt-dlp binary');
+    } catch (err) {
+      // CRITICAL: Never leave a rejected promise cached forever
+      ytdlpSetupPromise = null;
+      throw err;
+    }
   })();
 
   return ytdlpSetupPromise;
 }
 
 async function ensureFfmpeg(): Promise<string> {
-  if (ffmpegReadyPath && fs.existsSync(ffmpegReadyPath)) return ffmpegReadyPath;
+  if (ffmpegReadyPath && (ffmpegReadyPath === 'ffmpeg' || fs.existsSync(ffmpegReadyPath))) return ffmpegReadyPath;
   if (ffmpegSetupPromise) return ffmpegSetupPromise;
 
   ffmpegSetupPromise = (async () => {
-    // 1. Try system ffmpeg
-    const sys = await getSystemFfmpeg();
-    if (sys) {
-      ffmpegReadyPath = sys;
-      return sys;
-    }
-
-    // 2. Try cached /tmp/ffmpeg
-    if (fs.existsSync(FFMPEG_TMP_PATH)) {
-      try {
-        fs.chmodSync(FFMPEG_TMP_PATH, 0o755);
-        await execFileAsync(FFMPEG_TMP_PATH, ['-version'], { timeout: 4000 });
-        ffmpegReadyPath = FFMPEG_TMP_PATH;
-        return FFMPEG_TMP_PATH;
-      } catch {
-        try { fs.unlinkSync(FFMPEG_TMP_PATH); } catch {}
+    try {
+      // 1. Try system ffmpeg
+      const sys = await getSystemFfmpeg();
+      if (sys) {
+        ffmpegReadyPath = sys;
+        return sys;
       }
-    }
 
-    // 3. Download and gunzip static ffmpeg to /tmp/ffmpeg via stream
-    console.log('[ffmpeg] Downloading static Linux ffmpeg to /tmp/ffmpeg via stream...');
-    await new Promise<void>((resolve, reject) => {
-      const file = fs.createWriteStream(FFMPEG_TMP_PATH);
-      const gunzip = zlib.createGunzip();
-      const download = (targetUrl: string) => {
-        https.get(targetUrl, (res) => {
-          if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-            return download(res.headers.location);
-          }
-          if (res.statusCode !== 200) {
-            return reject(new Error(`Failed to download ffmpeg: HTTP ${res.statusCode}`));
-          }
-          res.pipe(gunzip).pipe(file);
-          file.on('finish', () => {
-            file.close(() => resolve());
-          });
-        }).on('error', (err) => {
+      // 2. Try cached /tmp/ffmpeg
+      if (fs.existsSync(FFMPEG_TMP_PATH)) {
+        try {
+          fs.chmodSync(FFMPEG_TMP_PATH, 0o755);
+          await execFileAsync(FFMPEG_TMP_PATH, ['-version'], { timeout: 15000 });
+          ffmpegReadyPath = FFMPEG_TMP_PATH;
+          return FFMPEG_TMP_PATH;
+        } catch {
           try { fs.unlinkSync(FFMPEG_TMP_PATH); } catch {}
-          reject(err);
-        });
-      };
-      download(FFMPEG_LINUX_URL);
-    });
-    fs.chmodSync(FFMPEG_TMP_PATH, 0o755);
+        }
+      }
 
-    await execFileAsync(FFMPEG_TMP_PATH, ['-version'], { timeout: 10000 });
-    console.log('[ffmpeg] Downloaded & verified /tmp/ffmpeg');
-    ffmpegReadyPath = FFMPEG_TMP_PATH;
-    return FFMPEG_TMP_PATH;
+      // 3. Download and gunzip static ffmpeg atomically to /tmp/ffmpeg
+      console.log('[ffmpeg] Downloading static Linux ffmpeg to /tmp/ffmpeg...');
+      await downloadBinaryAtomically(FFMPEG_LINUX_URL, FFMPEG_TMP_PATH, true);
+      await execFileAsync(FFMPEG_TMP_PATH, ['-version'], { timeout: 20000 });
+      console.log('[ffmpeg] Downloaded & verified /tmp/ffmpeg');
+      ffmpegReadyPath = FFMPEG_TMP_PATH;
+      return FFMPEG_TMP_PATH;
+    } catch (err) {
+      // CRITICAL: Never leave a rejected promise cached forever
+      ffmpegSetupPromise = null;
+      throw err;
+    }
   })();
 
   return ffmpegSetupPromise;
 }
 
-// Background pre-warm
-ensureYtDlp().catch(() => {});
-ensureFfmpeg().catch(() => {});
+// Background pre-warm sequentially so yt-dlp and ffmpeg don't starve Render's CPU/RAM on cold start
+ensureYtDlp()
+  .catch((e) => console.warn('[yt-dlp] Pre-warm warning:', e?.message))
+  .finally(() => {
+    ensureFfmpeg().catch((e) => console.warn('[ffmpeg] Pre-warm warning:', e?.message));
+  });
 
 // ─── Instagram Cookies Support ───────────────────────────────────────────────
 const IG_COOKIES_PATH = '/tmp/ig-cookies.txt';
@@ -400,7 +433,7 @@ app.get('/api/info', async (req, res) => {
 
   // ── YouTube Handler (OEmbed + Direct Thumbnail + Clean Aspect Ratio) ────────
   if (platform === 'youtube') {
-    const ytData = parseYouTubeId(cleanUrlWithoutParams);
+    const ytData = parseYouTubeId(targetUrl);
     if (!ytData) {
       return res.status(400).json({ success: false, error: 'Invalid YouTube video or Shorts link.' });
     }
@@ -500,59 +533,117 @@ app.get('/api/info', async (req, res) => {
     });
   }
 
-  // ── TikTok Handler (TikWM + OEmbed) ─────────────────────────────────────────
+  // ── TikTok Handler (TikWM with retry & POST fallback) ──────────────────────
   if (platform === 'tiktok') {
     try {
-      const tikRes = await fetch(`https://www.tikwm.com/api/?url=${encodeURIComponent(cleanUrlWithoutParams)}&hd=1`, {
-        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36' },
-      });
-      if (tikRes.ok) {
-        const json = await tikRes.json();
-        if (json && json.data) {
-          const data = json.data;
-          const playUrl = data.hdplay || data.play || '';
-          const musicUrl = data.music || '';
-          const cover = data.cover || '';
-          const title = data.title || 'TikTok Video';
-          const author = data.author?.nickname || 'TikTok Creator';
+      let resolvedTikUrl = cleanUrlWithoutParams;
+      if (resolvedTikUrl.includes('vm.tiktok.com') || resolvedTikUrl.includes('vt.tiktok.com') || resolvedTikUrl.includes('/t/')) {
+        try {
+          const headRes = await fetch(resolvedTikUrl, {
+            method: 'GET',
+            redirect: 'follow',
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+            },
+          });
+          if (headRes.url && headRes.url !== resolvedTikUrl) {
+            resolvedTikUrl = headRes.url.split('?')[0];
+          }
+        } catch {}
+      }
 
-          const downloads = [
-            {
-              id: 'cf_tiktok_hd',
-              label: '1080p HD (No Watermark)',
-              quality: '1080',
-              description: 'Crisp video without TikTok watermark',
-              badge: '1080p NO WATERMARK',
-              type: 'video',
-              url: targetUrl,
-              directUrl: playUrl.startsWith('http') ? playUrl : `https://www.tikwm.com${playUrl}`,
-              extension: 'mp4',
-              isOriginal: true,
-            },
-            {
-              id: 'cf_tiktok_audio',
-              label: 'Original Sound MP3',
-              quality: 'audio',
-              description: 'Extracted audio track',
-              badge: 'MP3 AUDIO',
-              type: 'audio',
-              url: targetUrl,
-              directUrl: musicUrl,
-              extension: 'mp3',
-            },
-            {
-              id: 'cf_tiktok_cover',
-              label: 'Cover Thumbnail',
-              quality: 'thumb',
-              description: 'High resolution cover',
-              badge: 'THUMBNAIL',
-              type: 'thumbnail',
-              url: cover,
-              directUrl: cover,
-              extension: 'jpg',
-            },
-          ];
+      const tikHeaders = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+        'Accept': 'application/json, text/plain, */*',
+      };
 
+      const fetchTikWm = async (usePost: boolean): Promise<any | null> => {
+        const res = usePost
+          ? await fetch('https://www.tikwm.com/api/', {
+              method: 'POST',
+              headers: { ...tikHeaders, 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: new URLSearchParams({ url: resolvedTikUrl, hd: '1' }),
+            })
+          : await fetch(`https://www.tikwm.com/api/?url=${encodeURIComponent(resolvedTikUrl)}&hd=1`, {
+              headers: tikHeaders,
+            });
+        if (!res.ok) return null;
+        return res.json();
+      };
+
+      let json = await fetchTikWm(false).catch(() => null);
+      // TikWM free API enforces 1 req/sec on shared cloud IPs (code: -1) — wait briefly and retry via POST
+      if (!json || !json.data) {
+        await new Promise((r) => setTimeout(r, 1300));
+        json = await fetchTikWm(true).catch(() => null);
+      }
+
+      if (json && json.data) {
+        const data = json.data;
+        const toAbs = (u?: string) => (u ? (u.startsWith('http') ? u : `https://www.tikwm.com${u}`) : '');
+        const playUrl = toAbs(data.hdplay || data.play);
+        const stdUrl = toAbs(data.play);
+        const musicUrl = toAbs(data.music || data.music_info?.play);
+        const cover = toAbs(data.origin_cover || data.cover);
+        const title = data.title || 'TikTok Video';
+        const author = data.author?.nickname || 'TikTok Creator';
+
+        const downloads: any[] = [];
+        if (playUrl) {
+          downloads.push({
+            id: 'cf_tiktok_hd',
+            label: '1080p HD (No Watermark)',
+            quality: '1080',
+            description: 'Crisp video without TikTok watermark',
+            badge: '1080p NO WATERMARK',
+            type: 'video',
+            url: resolvedTikUrl,
+            directUrl: playUrl,
+            extension: 'mp4',
+            isOriginal: true,
+          });
+        }
+        if (stdUrl && stdUrl !== playUrl) {
+          downloads.push({
+            id: 'cf_tiktok_sd',
+            label: '720p Fast MP4 (No Watermark)',
+            quality: '720',
+            description: 'Smaller file size for fast saving and sharing',
+            badge: '720p FAST',
+            type: 'video',
+            url: resolvedTikUrl,
+            directUrl: stdUrl,
+            extension: 'mp4',
+          });
+        }
+        if (musicUrl) {
+          downloads.push({
+            id: 'cf_tiktok_audio',
+            label: 'Original Sound MP3',
+            quality: 'audio',
+            description: 'Extracted audio track',
+            badge: 'MP3 AUDIO',
+            type: 'audio',
+            url: resolvedTikUrl,
+            directUrl: musicUrl,
+            extension: 'mp3',
+          });
+        }
+        if (cover) {
+          downloads.push({
+            id: 'cf_tiktok_cover',
+            label: 'Cover Thumbnail',
+            quality: 'thumb',
+            description: 'High resolution cover',
+            badge: 'THUMBNAIL',
+            type: 'thumbnail',
+            url: cover,
+            directUrl: cover,
+            extension: 'jpg',
+          });
+        }
+
+        if (downloads.length > 0) {
           return res.json({
             success: true,
             data: {
@@ -563,6 +654,7 @@ app.get('/api/info', async (req, res) => {
               authorName: author,
               authorUsername: data.author?.unique_id || '',
               coverUrl: cover,
+              videoUrl: playUrl || stdUrl || undefined,
               duration: data.duration || 15,
               durationFormatted: `${data.duration || 15}s`,
               aspect_ratio: '9:16',
@@ -573,7 +665,9 @@ app.get('/api/info', async (req, res) => {
           });
         }
       }
-    } catch {}
+    } catch (tikErr: any) {
+      console.warn('[TikTok Handler Error]', tikErr?.message);
+    }
   }
 
   // ── Instagram Handler (Multi-Scraper Pipeline) ──────────────────────────────
@@ -1133,6 +1227,27 @@ app.get('/api/info', async (req, res) => {
           }
         } catch (rssErr) {
           console.warn('[Reddit RSS Extraction Error]', rssErr);
+        }
+      }
+
+      // 2b. Fallback via RapidSave when Reddit blocks .rss (HTTP 403 on cloud IPs)
+      if (!vReddItUrl && !iReddItUrl) {
+        try {
+          const rsRes = await fetch(`https://rapidsave.com/info?url=${encodeURIComponent(cleanUrl)}`, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+              'Accept': 'text/html,application/xhtml+xml,*/*',
+            },
+          });
+          if (rsRes.ok) {
+            const rsHtml = await rsRes.text();
+            const vMatch = rsHtml.match(/https:\/\/v\.redd\.it\/([a-zA-Z0-9]+)/);
+            if (vMatch) vReddItUrl = `https://v.redd.it/${vMatch[1]}`;
+            const iMatch = rsHtml.match(/https:\/\/i\.redd\.it\/([a-zA-Z0-9.]+)/);
+            if (!vReddItUrl && iMatch) iReddItUrl = `https://i.redd.it/${iMatch[1]}`;
+          }
+        } catch (rsErr) {
+          console.warn('[Reddit RapidSave Fallback Error]', rsErr);
         }
       }
 
