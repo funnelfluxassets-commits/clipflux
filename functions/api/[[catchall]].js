@@ -5,8 +5,13 @@ export async function onRequest(context) {
   const targetOrigin = "https://clipflux-m6hm.onrender.com";
   const targetUrl = `${targetOrigin}${url.pathname}${url.search}`;
 
-  const newHeaders = new Headers(request.headers);
-  newHeaders.set("Host", "clipflux-m6hm.onrender.com");
+  const newHeaders = new Headers();
+  const safeForwardHeaders = ["accept", "content-type", "range"];
+  for (const h of safeForwardHeaders) {
+    const val = request.headers.get(h);
+    if (val) newHeaders.set(h, val);
+  }
+  newHeaders.set("User-Agent", "ClipFlux-Frontend/1.0");
 
   const proxyRequest = new Request(targetUrl, {
     method: request.method,

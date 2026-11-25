@@ -21,6 +21,14 @@ import { Download, Sparkles } from 'lucide-react';
 import { auth } from './firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 
+const API_BASE =
+  typeof window !== 'undefined' &&
+  (window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1' ||
+    window.location.hostname.endsWith('.onrender.com'))
+    ? ''
+    : 'https://clipflux-m6hm.onrender.com';
+
 export const App: React.FC = () => {
   // Theme state (Default: Dark Mode)
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
@@ -121,7 +129,12 @@ export const App: React.FC = () => {
     // Preserves existing mediaResult on screen while fetching next video (exact same as TokDownloader)
 
     try {
-      const res = await fetch(`/api/info?url=${encodeURIComponent(target)}`);
+      const endpoint = `${API_BASE}/api/info?url=${encodeURIComponent(target)}`;
+      let res = await fetch(endpoint);
+      if (res.status === 429 || res.status === 502 || res.status === 503) {
+        await new Promise((r) => setTimeout(r, 3000));
+        res = await fetch(endpoint);
+      }
       const text = await res.text();
       let data: any = null;
       try {
@@ -242,7 +255,7 @@ export const App: React.FC = () => {
       // 2. Fallback for blocked CORS or YouTube: Stream download via server endpoint
       setDownloadProgress('Connecting...');
       const streamParam = option.directUrl ? `&streamUrl=${encodeURIComponent(option.directUrl)}` : '';
-      const downloadEndpoint = `/api/download?url=${encodeURIComponent(mediaResult?.originalUrl || '')}${streamParam}&format=${option.id}&filename=${encodeURIComponent(filename)}`;
+      const downloadEndpoint = `${API_BASE}/api/download?url=${encodeURIComponent(mediaResult?.originalUrl || '')}${streamParam}&format=${option.id}&filename=${encodeURIComponent(filename)}`;
 
       const response = await fetch(downloadEndpoint);
       if (!response.ok) {
@@ -334,7 +347,7 @@ export const App: React.FC = () => {
         freshness,
       });
 
-      const res = await fetch(`/api/scrape?${queryParams.toString()}`);
+      const res = await fetch(`${API_BASE}/api/scrape?${queryParams.toString()}`);
       const data = await res.json();
 
       clearTimeout(timer1);
