@@ -178,7 +178,7 @@ export const App: React.FC = () => {
         try {
           setDownloadProgress('Direct downloading...');
           const controller = new AbortController();
-          const timer = setTimeout(() => controller.abort(), 4500);
+          const timer = setTimeout(() => controller.abort(), 12000);
           const directRes = await fetch(option.directUrl!, {
             signal: controller.signal,
             headers: { Accept: '*/*' },

@@ -572,9 +572,13 @@ app.get('/api/info', async (req, res) => {
       };
 
       let json = await fetchTikWm(false).catch(() => null);
-      // TikWM free API enforces 1 req/sec on shared cloud IPs (code: -1) — wait briefly and retry via POST
+      // TikWM free API enforces 1 req/sec on shared cloud IPs (code: -1) — retry with backoff
       if (!json || !json.data) {
-        await new Promise((r) => setTimeout(r, 1300));
+        await new Promise((r) => setTimeout(r, 1200));
+        json = await fetchTikWm(true).catch(() => null);
+      }
+      if (!json || !json.data) {
+        await new Promise((r) => setTimeout(r, 1500));
         json = await fetchTikWm(true).catch(() => null);
       }
 
@@ -1473,6 +1477,7 @@ app.get('/api/info', async (req, res) => {
         badge: 'MP3 AUDIO',
         type: 'audio',
         url: targetUrl,
+        directUrl: directMp4 || undefined,
         extension: 'mp3',
       },
       {
@@ -1592,6 +1597,43 @@ app.get('/api/download', async (req, res) => {
         }
       }
 
+      // 2. TikTok native MP3 extraction via TikWM
+      if (targetUrl.includes('tiktok.com')) {
+        try {
+          const tikRes = await fetch(`https://www.tikwm.com/api/?url=${encodeURIComponent(targetUrl)}&hd=1`, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+            },
+          });
+          if (tikRes.ok) {
+            const tikData = await tikRes.json();
+            const musicUrl = tikData?.data?.music || tikData?.data?.music_info?.play;
+            if (musicUrl) {
+              const absMusic = musicUrl.startsWith('http') ? musicUrl : `https://www.tikwm.com${musicUrl}`;
+              const cdnRes = await fetch(absMusic, {
+                headers: {
+                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+                  'Referer': 'https://www.tiktok.com/',
+                },
+              });
+              if (cdnRes.ok && cdnRes.body) {
+                const cl = cdnRes.headers.get('content-length');
+                if (cl) res.setHeader('Content-Length', cl);
+                res.setHeader('Content-Type', 'audio/mpeg');
+                res.setHeader('Cache-Control', 'no-cache');
+                const { pipeline } = await import('stream/promises');
+                const { Readable } = await import('stream');
+                // @ts-ignore
+                await pipeline(Readable.fromWeb(cdnRes.body), res);
+                return;
+              }
+            }
+          }
+        } catch (tikAudioErr) {
+          console.warn('[TikTok native audio proxy failed, falling back to yt-dlp]', tikAudioErr);
+        }
+      }
+
       let ytUrl = targetUrl;
       let extraArgs: string[] = [];
 
@@ -1634,9 +1676,16 @@ app.get('/api/download', async (req, res) => {
       } else {
         extraArgs = [
           '-f', 'ba/b/bestaudio/best',
+          '--no-warnings',
           ...ensureInstagramCookies(),
           ...ensureRedditCookies(),
         ];
+        if (targetUrl.includes('tiktok.com')) {
+          extraArgs.push(
+            '--add-header', 'User-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+            '--add-header', 'Referer:https://www.tiktok.com/'
+          );
+        }
       }
 
       // 2. YouTube or other platform audio extraction via local yt-dlp fallback
@@ -1706,10 +1755,20 @@ app.get('/api/download', async (req, res) => {
     // 1. Direct streamUrl CDN proxy (Instagram, TikTok, Twitter, etc.)
     if (streamUrl && streamUrl.startsWith('http') && !isYouTube) {
       try {
+        const cdnHeaders: Record<string, string> = {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+          'Accept': '*/*',
+        };
+        if (targetUrl.includes('tiktok.com') || streamUrl.includes('tiktok')) {
+          cdnHeaders['Referer'] = 'https://www.tiktok.com/';
+        } else if (targetUrl.includes('instagram.com') || streamUrl.includes('cdninstagram')) {
+          cdnHeaders['Referer'] = 'https://www.instagram.com/';
+        } else if (targetUrl.includes('twitter.com') || targetUrl.includes('x.com') || streamUrl.includes('twimg')) {
+          cdnHeaders['Referer'] = 'https://twitter.com/';
+        }
+
         const cdnRes = await fetch(streamUrl, {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-          },
+          headers: cdnHeaders,
         });
         if (cdnRes.ok && cdnRes.body) {
           const contentLength = cdnRes.headers.get('content-length');
@@ -1729,7 +1788,48 @@ app.get('/api/download', async (req, res) => {
           return;
         }
       } catch (cdnErr) {
-        console.warn('[CDN direct proxy failed, falling back to yt-dlp]', cdnErr);
+        console.warn('[CDN direct proxy failed, checking platform fallbacks]', cdnErr);
+      }
+    }
+
+    // 2. Direct TikTok Stream via TikWM fallback (avoids yt-dlp impersonation errors)
+    if (targetUrl.includes('tiktok.com')) {
+      try {
+        const tikHeaders = {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+          'Accept': 'application/json, text/plain, */*',
+        };
+        const tikRes = await fetch(`https://www.tikwm.com/api/?url=${encodeURIComponent(targetUrl)}&hd=1`, {
+          headers: tikHeaders,
+        });
+        if (tikRes.ok) {
+          const tikJson = await tikRes.json();
+          if (tikJson?.data) {
+            const playUrl = tikJson.data.hdplay || tikJson.data.play;
+            if (playUrl) {
+              const absPlay = playUrl.startsWith('http') ? playUrl : `https://www.tikwm.com${playUrl}`;
+              const cdnRes = await fetch(absPlay, {
+                headers: {
+                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+                  'Referer': 'https://www.tiktok.com/',
+                },
+              });
+              if (cdnRes.ok && cdnRes.body) {
+                const contentLength = cdnRes.headers.get('content-length');
+                if (contentLength) res.setHeader('Content-Length', contentLength);
+                res.setHeader('Cache-Control', 'no-cache');
+
+                const { pipeline } = await import('stream/promises');
+                const { Readable } = await import('stream');
+                // @ts-ignore
+                await pipeline(Readable.fromWeb(cdnRes.body), res);
+                return;
+              }
+            }
+          }
+        }
+      } catch (tikErr) {
+        console.warn('[TikTok TikWM video proxy failed, falling back to yt-dlp]', tikErr);
       }
     }
 
@@ -1783,9 +1883,16 @@ app.get('/api/download', async (req, res) => {
       extraArgs = [
         '-f', 'bestvideo+bestaudio/best',
         '--merge-output-format', 'mp4',
+        '--no-warnings',
         ...ensureInstagramCookies(),
         ...ensureRedditCookies(),
       ];
+      if (targetUrl.includes('tiktok.com')) {
+        extraArgs.push(
+          '--add-header', 'User-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+          '--add-header', 'Referer:https://www.tiktok.com/'
+        );
+      }
     }
 
     // 2. Local yt-dlp fallback only if TubeDownloader proxy didn't handle it
